@@ -1,0 +1,91 @@
+This is a sample of code that was used to evaluate the time required to compute the block
+composite likelihood and mle of a 2D grid of spatially correlated points
+governed by a Matern covariance structure.  The paper describing this is:
+  Estimation and prediction in spatial models with block 
+  composite likelihoods using parallel computing
+  Jo Eidsvik, Benjamin A. Shaby, Brian J. Reich, Matthew Wheeler, Jarad Niemi
+
+This code was developed on Ubuntu 10.10 and used a single Tesla C2050 (compute capacity 2.0)
+GPU device to make calculations.  It has also been run under Fedora using a single T10
+Processor (compute capacity 1.3).
+
+This code is available to be freely used, distributed, or modified with the understanding that
+it comes with absolutely no warranty of any kind.
+
+The following is assumed:
+
+1) The appropriate CUDA drivers are installed
+2) The CUDA SDK toolkit has been installed.  Usually the SDK is installed in /usr/local/cuda/*
+3) The GPU coding examples have been installed under the user's home directory.  This is
+   usually ~/NVIDIA_GPU_Computing_SDK.  NVIDIA calls this "GPU Computing SDK code samples."
+
+   Also required are the CUDA libraries that get compiled when the example programs are 
+   compiled.  If this is an initial installation of the code
+   examples it is recommended that make is run under ~/NVIDIA_GPU_Computing_SDK/C.  This will
+   compile the necessary libraries.  Some example programs may not compile due to missing
+   libraries, but that should have no impact on this code example.
+
+As of this writting, documentation and binaries for the above steps can be found at:
+
+http://developer.nvidia.com/cuda-downloads
+
+Make sure the following environment variables are set:
+export LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/cuda/lib:$LD_LIBRARY_PATH"
+export PATH="/usr/local/cuda/bin:$PATH"
+
+Note, if you're running a 32 bit machine, you will not need "/.../lib64"
+
+If you want to test if you're properly configured, compile and run the deviceQuery program:
+cd ~/NVIDIA_GPU_Computing_SDK/C/src/deviceQuery
+make
+~/NVIDIA_GPU_Computing_SDK/C/bin/linux/release/deviceQuery
+
+If all is well, you should get information on the current setup of your GPU device(s).
+
+It is recommended that this archive be unpacked in ~/NVIDIA_GPU_Computing_SDK/C/src/ 
+to create the directory:
+
+~/NVIDIA_GPU_Computing_SDK/C/src/blockComposite
+
+e.g.:
+
+cd /NVIDIA_GPU_Computing_SDK/C/src
+tar -xzvf blockComposite.tgz
+
+Compiling the source outside of this directory structure has not been tested, although it should
+be possible to do so.
+
+Once the archive has been decompressed:
+
+cd ~/NVIDIA_GPU_Computing_SDK/C/src/blockComposite
+make
+
+To run the code example:
+~/NVIDIA_GPU_Computing_SDK/C/bin/linux/release/blockComp
+
+
+Description of files:
+
+blockComp.cu:  Main driver file.  Primarily interfaces with the Block class to calculate block
+composite likelihoods and maximum likelihood estimators.  If modification is desired,
+this is where data would be loaded into the various blocks and where "neighbor" blocks
+would be defined.
+
+Block.*:  Block class.  Conceptually a storage unit for the spatial and measurement (resposne)
+data along with functions that operate on the data.  See Block.h for simple description of 
+functionality.  Most functionality is based on the GPU linear algebra library CUBLAS. 
+ 
+cholesky_kernel.cu: Code implementing Cholesky decomposition.  Primarily uses CUBLAS routines
+however also has some cuda kernel code as well.
+
+kernels.cu:  Cuda code implementing covariance matrices and their derivatives assuming 
+a Matern covariance structure.
+
+MersenneTwister.h:  Makoto Matsumoto's Mersenne Twister implemented by Richard J. Wagner.  See file 
+for license.  No known modifications were made to this code.
+
+util.*:  Convenience functions to take care of often repeated code:  Solving a linear system via
+Cholesky decomposition - uses cholesky_kernel.cu and CUBLAS routines.  Also calculates the trace
+of a matrix.
+
+
