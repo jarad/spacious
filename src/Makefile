@@ -33,7 +33,8 @@
 #
 ################################################################################
 
-ROOTDIR := ..
+#ROOTDIR := ..
+ROOTDIR := /home/rjp/NVIDIA_GPU_Computing_SDK/C/common
 
 # Add source files here
 EXECUTABLE	:= blockComp
@@ -59,9 +60,9 @@ CU_DEPS		:= \
 USECUBLAS := 1
 
 #useful for debugging linking errors:
-#verbose := 1
+verbose := 1
 
 #Will display shared memory and register usage for kernel functions:
 #ptxas := 1
 
-include ~/NVIDIA_GPU_Computing_SDK_BAK/C/common/common.mk
+include $(ROOTDIR)/common.mk
