@@ -34,7 +34,7 @@
 ################################################################################
 
 #ROOTDIR := ..
-ROOTDIR := /home/rjp/NVIDIA_GPU_Computing_SDK/C/common
+ROOTDIR := $(HOME)/NVIDIA_GPU_Computing_SDK/C/common
 
 # Add source files here
 EXECUTABLE	:= blockComp
