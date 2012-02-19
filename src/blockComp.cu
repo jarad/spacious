@@ -50,7 +50,7 @@ int main(/*int argc, char **argv*/)
   //It should not be necessary to force a square grid structure, however
   //this has not been tested and you will have to manage your sets of blocks explicitly.
   //////////////////////////////////////////////////////////////////////////////
-  unsigned int c = 1024,
+  unsigned int c = 32,
                M1 = 2;
   unsigned int n = c*M1*M1;
 
