@@ -1,9 +1,10 @@
 Package: spacious
+Depends: MASS, fields, geoR, sp, spdep
 Type: Package
-Title: What the package does (short line)
-Version: 1.0
-Date: 2012-07-20
-Author: Who wrote it
-Maintainer: Who to complain to <yourfault@somewhere.net>
-Description: More about what it does (maybe more than one line)
-License: What license is it under?
+Title: Block composite spatial analysis.
+Version: 0.1
+Date: 2012-07-30
+Author: Ryan J. Parker and Jarad Niemi
+Maintainer: Ryan J. Parker <rjparker@ncsu.edu>
+Description: Fits block composite geostatistical spatial models.
+License: GPL
