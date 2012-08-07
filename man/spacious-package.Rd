@@ -1,13 +1,10 @@
 \name{spacious-package}
 \alias{spacious-package}
-\alias{spacious}
 \docType{package}
 \title{
-What the package does (short line)
 Block composite spatial analysis.
 }
 \description{
-More about what it does (maybe more than one line)
 Fits block composite geostatistical spatial models.
 }
 \details{

@@ -1,11 +1,16 @@
 # function to fit block composite models
 "spacious" <- function(
-	y, X, S,                                # input data
+	formula, data=NULL, S,                  # input data
 	cov="exp", cov.inits=NULL,              # covariance function
 	nblocks=1, grid.type="regular"          # blocking style
 ) {
-# TODO: move y/X to formula form
 # TODO: let user specify block memberships B
+# TODO: let user specify neighbors
+
+	# construct response y and model matrix X from formula
+	mfs <- model.frame(formula, data)
+	y <- model.extract(mfs, "response")
+	X <- model.matrix(attr(mfs, "terms"), mfs, NULL)
 
 	# information about model matrix
 	n <- nrow(X)
@@ -25,6 +30,7 @@
 	# create grid
 	B <- rep(NA, n)   # vector to hold block memberships
 	neighbors <- c()
+	grid <- c()
 	if (nblocks == 1) {
 		B[1:n] <- 1
 		neighbors <- matrix( c(1, 1), nrow=1 )
@@ -43,7 +49,6 @@
 		spacing <- (s.x[2]-s.x[1])/snb
 
 		# create grid
-		grid <- c()
 		b <- 1
 		for (i in seq(s.x[1],s.x[2]-spacing,by=spacing)) {
 			for (j in seq(s.y[1],s.y[2]-spacing,by=spacing)) {
@@ -83,11 +88,22 @@
 	# NOTE: theta passed to spacious.fit are unconstrained via log()
 	if (is.null(cov.inits)) {
 		theta <- rep(0, R)
+#theta[1] <- theta[2] <- log(var(y)/2)
+#cat("Starting with:",exp(theta),"\n")
 	} else {
 		theta <- log(cov.inits$theta)
 	}
 
+# TODO: move computation of D to spacious.fit()
 	fit <- spacious.fit(y, X, D, B, neighbors, cov, n, p, R, theta)
+
+	fit$y <- y
+	fit$S <- S
+	fit$D <- D
+	fit$B <- B
+	fit$grid <- grid
+	fit$neighbors <- neighbors
+	fit$cov <- cov
 
 	class(fit) <- "spacious"
 
