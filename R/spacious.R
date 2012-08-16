@@ -8,9 +8,9 @@
 # TODO: let user specify neighbors
 
 	# construct response y and model matrix X from formula
-	mfs <- model.frame(formula, data)
-	y <- model.extract(mfs, "response")
-	X <- model.matrix(attr(mfs, "terms"), mfs, NULL)
+	mf <- model.frame(formula, data)
+	y <- model.extract(mf, "response")
+	X <- model.matrix(attr(mf, "terms"), mf, NULL)
 
 	# information about model matrix
 	n <- nrow(X)
@@ -97,6 +97,10 @@
 # TODO: move computation of D to spacious.fit()
 	fit <- spacious.fit(y, X, D, B, neighbors, cov, n, p, R, theta)
 
+	# construct output fit
+	fit$beta <- as.vector(fit$beta)
+	fit$theta <- as.vector(fit$theta)
+
 	fit$y <- y
 	fit$S <- S
 	fit$D <- D
@@ -104,6 +108,9 @@
 	fit$grid <- grid
 	fit$neighbors <- neighbors
 	fit$cov <- cov
+
+	fit$terms <- attr(mf, "terms")
+	fit$fitted <- X %*% fit$beta
 
 	class(fit) <- "spacious"
 
