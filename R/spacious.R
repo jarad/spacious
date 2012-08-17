@@ -20,7 +20,13 @@
 	D <- rdist(S)
 	D[row(D)==col(D)] <- 0
 
-	# handle covariance types
+	# handle covariance typesa
+
+# TODO: I suggest you use pmatch, e.g.
+# cov = pmatch(cov, c("a","b","exp"))
+# if (cov != 3) stop("Unknown covariance function")
+# then replace R below with cov
+
 	if (cov == "exp") {
 		R <- 3
 	} else {
