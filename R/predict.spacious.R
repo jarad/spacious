@@ -17,28 +17,23 @@
 	mf <- model.frame(terms, newdata)
 	X <- model.matrix(terms, mf)
 
+	# locations for all points
+	S <- rbind(object$S, newS)
+
+	# compute distance matrix
+	D <- rdist(S)
+	D[row(D)==col(D)] <- 0
+
 	# vector to hold predictions
 	y0 <- rep(NA, nNew)
 
 	# figure out newB the location is in
 	if (nB == 0) {  # no blocks
 		# perform traditional kriging
-
-		# locations for all points
-		S <- rbind(object$S, newS)
 		n <- nrow(S)
 
-		# compute distance matrix
-		D <- rdist(S)
-		D[row(D)==col(D)] <- 0
-
 		# compute covariance matrix
-		Sigma <- c()
-		if (object$cov == "exp") {
-			Sigma <- object$theta[1] * diag(n) + object$theta[2] * exp(-object$theta[3] * D)
-		} else {
-			stop(paste("Unknown covariance type:",object$cov))
-		}
+		Sigma <- compute_cov(object$cov, object$theta, D)
 
 		# get the predictions
 		y0[1:nNew] <- X %*% object$beta + Sigma[(nFit+1):n,1:nFit] %*%
@@ -82,6 +77,17 @@ cat("Initial y0:",y0,"\n")
 				newNeighbors <- which( rowSums( object$neighbors==b ) == 1 )
 cat("Block:",b,"\n")
 cat("Neighbors:",newNeighbors,"\n")
+
+				# what new points are in this block?
+				newInBlock <- which(newB == b)
+print(sum(newInBlock))
+done
+
+				for (pair in newNeighbors) {
+					# compute covariance matrix
+					#Sigma <- compute_cov(object$cov, object$theta, D[,])
+				}
+
 			}
 		}
 	}

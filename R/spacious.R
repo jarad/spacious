@@ -98,18 +98,18 @@
 	fit <- spacious.fit(y, X, D, B, neighbors, cov, n, p, R, theta)
 
 	# construct output fit
-	fit$beta <- as.vector(fit$beta)
+	fit$beta  <- as.vector(fit$beta)
 	fit$theta <- as.vector(fit$theta)
 
-	fit$y <- y
-	fit$S <- S
-	fit$D <- D
-	fit$B <- B
-	fit$grid <- grid
+	fit$y         <- y
+	fit$S         <- S
+	fit$D         <- D
+	fit$B         <- B
+	fit$grid      <- grid
 	fit$neighbors <- neighbors
-	fit$cov <- cov
+	fit$cov       <- cov
 
-	fit$terms <- attr(mf, "terms")
+	fit$terms  <- attr(mf, "terms")
 	fit$fitted <- X %*% fit$beta
 
 	class(fit) <- "spacious"

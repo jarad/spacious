@@ -52,8 +52,7 @@
 			in.pair <- B==row[1] | B==row[2]
 			n.pair <- sum(in.pair)
 
-# TODO: create a function to compute Sigma based on covariance type
-			Sigma <- exp(theta[1])*diag(n.pair) + exp(theta[2])*exp(-exp(theta[3])*D[in.pair,in.pair])
+			Sigma <- compute_cov(cov, exp(theta), D[in.pair,in.pair])
 			invSigma <- chol2inv(chol(Sigma))
 			A <<- A + t(X[in.pair,]) %*% invSigma %*% X[in.pair,]
 			b <<- b + t(X[in.pair,]) %*% invSigma %*% y[in.pair]
@@ -77,8 +76,8 @@
 			in.pair <- B==row[1] | B==row[2]
 			n.pair <- sum(in.pair)
 
-# TODO: figure out how to do this once since it's done in beta update as well (maybe merge stuff?)
-			Sigma <- exp(theta[1])*diag(n.pair) + exp(theta[2])*exp(-exp(theta[3])*D[in.pair,in.pair])
+# TODO: figure out if it is posible to do this once since it's done in beta update as well (maybe merge stuff?)
+			Sigma <- compute_cov(cov, exp(theta), D[in.pair,in.pair])
 			invSigma <- chol2inv(chol(Sigma))
 
 # TODO: see if any of this can be cleaned up
