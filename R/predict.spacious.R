@@ -25,7 +25,7 @@
 	D[row(D)==col(D)] <- 0
 
 	# vector to hold predictions
-	y0 <- rep(NA, nNew)
+	y_0 <- rep(NA, nNew)
 
 	# figure out newB the location is in
 	if (nB == 0) {  # no blocks
@@ -36,8 +36,8 @@
 		Sigma <- compute_cov(object$cov, object$theta, D)
 
 		# get the predictions
-		y0[1:nNew] <- X %*% object$beta + Sigma[(nFit+1):n,1:nFit] %*%
-			chol2inv(chol(Sigma[1:nFit,1:nFit])) %*% (object$y - object$fitted)
+		y_0[1:nNew] <- X %*% object$beta + Sigma[(nFit+1):n,1:nFit] %*%
+			chol2inv(chol(Sigma[1:nFit,1:nFit])) %*% object$resids
 	} else {
 		# predict when we have blocks
 
@@ -66,31 +66,50 @@
 			B <- rbind(object$B, newB)
 
 			# predict for each unique block
-			y0[1:nNew] <- X %*% object$beta
-cat("Initial y0:",y0,"\n")
+			y_0[1:nNew] <- X %*% object$beta
 
-			# number of unique blocks we have data points for
+			# unique blocks we have data points for
 			uB <- unique(newB)
 
+# TODO: we could re-construct this so that we only invert each matrix once. worth considering if speed more important than memory.
 			for (b in uB) {
 				# neighbors of this block
-				newNeighbors <- which( rowSums( object$neighbors==b ) == 1 )
-cat("Block:",b,"\n")
-cat("Neighbors:",newNeighbors,"\n")
+				neighbors <- as.vector(object$neighbors[which( rowSums( object$neighbors==b ) == 1 ),])
+				neighbors <- neighbors[neighbors != b]
 
 				# what new points are in this block?
-				newInBlock <- which(newB == b)
-print(sum(newInBlock))
-done
+				in.new <- which(newB == b)+nFit
+				n.in.new <- length(in.new)
 
-				for (pair in newNeighbors) {
+				# what observed points are in this block?
+				in.obs <- which(object$B == b)
+				n.in.obs <- length(in.obs)
+
+				A_0 <- matrix(0, nrow=n.in.new, ncol=n.in.new)
+				b_0 <- rep(0, n.in.new)
+
+				for (neighbor in neighbors) {
+					in.neighbor <- which(object$B == neighbor)
+					n.in.neighbor <- length(in.neighbor)
+
+					# take points so that we have Y = (Y_{b,new}, Y_{b,obs}, Y_{neighbor})
+					in.pair <- c(in.new, in.obs, in.neighbor)
+
 					# compute covariance matrix
-					#Sigma <- compute_cov(object$cov, object$theta, D[,])
+					Sigma <- compute_cov(object$cov, object$theta, D[in.pair,in.pair])
+					invSigma <- chol2inv(chol(Sigma))
+
+					A_0 <- A_0 + invSigma[1:n.in.new,1:n.in.new]
+					b_0 <- b_0 + invSigma[1:n.in.new,n.in.new+1:n.in.obs] %*% object$resids[in.obs] +
+						invSigma[1:n.in.new,n.in.new+n.in.obs+1:n.in.neighbor] %*% object$resids[in.neighbor]
 				}
 
+				b_0 <- -b_0
+
+				y_0[in.new-nFit] <- y_0[in.new-nFit] + chol2inv(chol(A_0)) %*% b_0
 			}
 		}
 	}
 
-	return( as.vector(y0) )
+	return( as.vector(y_0) )
 }

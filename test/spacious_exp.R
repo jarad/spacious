@@ -12,8 +12,8 @@ require(geoR)
 set.seed(311)
 
 # generate data to use for fitting a block composite model
-n <- 200
-np <- 1   # number to predict
+n <- 500
+np <- 20   # number to predict
 
 # generate spatial locations S
 S <- cbind(runif(n+np), runif(n+np))
@@ -38,7 +38,7 @@ X <- matrix(1, nrow=length(y), ncol=1)
 x1 <- rnorm(n+np)
 time.spacious <- proc.time()
 #fit.spacious <- spacious(y, X, S, cov="exp", nblocks=1^2)
-fit.spacious <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="exp", nblocks=1^2)
+fit.spacious <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="exp", nblocks=2^2)
 time.spacious <- proc.time() - time.spacious
 beta.spacious <- fit.spacious$beta
 theta.spacious <- fit.spacious$theta
@@ -52,6 +52,8 @@ cat("Predictions:\n")
 print(preds)
 cat("Actual:\n")
 print(y[(n+1):(n+np)])
+
+# consider using the rbenchmark package
 
 if (0) {
 # try likfit

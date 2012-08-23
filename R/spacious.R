@@ -111,6 +111,7 @@
 
 	fit$terms  <- attr(mf, "terms")
 	fit$fitted <- X %*% fit$beta
+	fit$resids <- fit$y - fit$fitted
 
 	class(fit) <- "spacious"
 
