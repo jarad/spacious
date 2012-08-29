@@ -95,7 +95,7 @@
 	}
 
 # TODO: move computation of D to spacious.fit()
-	fit <- spacious.fit(y, X, D, B, neighbors, cov, n, p, R, theta)
+	fit <- spacious.fit(y, X, D, nblocks, B, neighbors, cov, n, p, R, theta)
 
 	# construct output fit
 	fit$beta  <- as.vector(fit$beta)
@@ -104,6 +104,7 @@
 	fit$y         <- y
 	fit$S         <- S
 	fit$D         <- D
+	fit$nblocks   <- nblocks
 	fit$B         <- B
 	fit$grid      <- grid
 	fit$neighbors <- neighbors

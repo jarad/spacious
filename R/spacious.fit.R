@@ -1,6 +1,6 @@
 # function to run algorithm for fitting a block composite model
 
-"spacious.fit" <- function(y, X, D, B, neighbors, cov, n, p, R, theta) {
+"spacious.fit" <- function(y, X, D, nblocks, B, neighbors, cov, n, p, R, theta) {
 	# y: response
 	# X: model matrix
 	# D: distance matrix
@@ -44,10 +44,12 @@
 	# function to update beta based on theta
 	A <- matrix(0, nrow=p, ncol=p)
 	b <- matrix(0, nrow=p, ncol=1)
+
 	"update_beta" <- function(theta) {
 		# build A and b
 		A[seq.p2] <<- 0
-		b[seq.p] <<- 0
+		b[seq.p]  <<- 0
+
 		apply(neighbors, 1, function(row) {
 			in.pair <- B==row[1] | B==row[2]
 			n.pair <- sum(in.pair)
@@ -68,9 +70,9 @@
 	FI <- matrix(0, nrow=R, ncol=R)
 
 	"update_theta" <- function(beta, theta) {
-		u[seq.R] <- 0
-		H[seq.RH] <- 0
-		FI[seq.R2] <- 0
+		u[seq.R]   <<- 0
+		H[seq.RH]  <<- 0
+		FI[seq.R2] <<- 0
 
 		apply(neighbors, 1, function(row) {
 			in.pair <- B==row[1] | B==row[2]
@@ -147,5 +149,76 @@ cat("Converged at iteration",i,"\n")
 		}
 	}
 
-	list(beta=beta, theta=exp(theta))
+	# compute covariance matrix of parameters
+	vcov.beta <- matrix(0, nrow=p, ncol=p)
+	vcov.theta <- matrix(0, nrow=R, ncol=R)
+	se.beta <- rep(0, p)
+	se.theta <- rep(0, R)
+
+	if (nblocks == 1) {
+		# don't use the sandwich
+		vcov.beta <- chol2inv(chol(A))
+		vcov.theta <- chol2inv(chol(FI))
+	} else {
+		# use the sandwich
+
+		J.beta  <- matrix(0, nrow=p, ncol=p)
+		J.theta <- FI
+
+		for (i in 1:nrow(neighbors)) {
+			# which sites are in block i?
+			in.i <- which(B==neighbors[i,1] | B==neighbors[i,2])
+			n.i <- length(in.i)
+			Sigma.i <- compute_cov(cov, exp(theta), D[in.i,in.i])
+			invSigma.i <- chol2inv(chol(Sigma.i))
+
+			for (j in 1:nrow(neighbors)) {
+				# do pairs i and j have a common block?
+				if (!any(neighbors[i,] == neighbors[j,1]) & !any(neighbors[i,] == neighbors[j,2])) {
+					next;
+				}
+
+				# which sites are in block j?
+				in.j <- which(B==neighbors[j,1] | B==neighbors[j,2])
+				n.j <- length(in.j)
+				Sigma.j <- compute_cov(cov, exp(theta), D[in.j,in.j])
+				invSigma.j <- chol2inv(chol(Sigma.j))
+
+				Sigma.ij <- compute_cov(cov, exp(theta), D[c(in.i,in.j),c(in.i,in.j)])
+
+				J.beta <- J.beta + t(X[in.i,]) %*% invSigma.i %*% Sigma.ij[1:n.i,n.i+1:n.j] %*% invSigma.j %*% X[in.j,]
+
+				if (j > i) {
+					# update J.theta
+# TODO: speed this up (maybe)
+					sapply(seq.R, function(r) {
+						sapply(r:R, function(s) {
+							B.ir <- invSigma.i %*% partials[[r]](theta, n.i, in.i) %*% invSigma.i
+							B.js <- invSigma.j %*% partials[[s]](theta, n.j, in.j) %*% invSigma.j
+							add <- sum(diag( B.ir %*% Sigma.ij[1:n.i,n.i+1:n.j] %*% B.js %*% Sigma.ij[n.i+1:n.j,1:n.i] ))
+
+							J.theta[r,s] <- J.theta[r,s] + add
+							if (r != s) {
+								J.theta[s,r] <- J.theta[s,r] + add
+							}
+						})
+					})
+				}
+			}
+		}
+
+		vcov.beta <- chol2inv(chol(A %*% chol2inv(chol(J.beta)) %*% A))
+		vcov.theta <- chol2inv(chol(FI %*% chol2inv(chol(J.theta)) %*% FI))
+	}
+
+	se.beta <- sqrt(diag(vcov.beta))
+	for (i in 1:R) {
+# TODO: is there a better way to do this?
+		se.theta[i] <- exp(theta[i] + sqrt(vcov.theta[i,i])) - exp(theta[i])
+	}
+
+	# return estimates and standard errors
+	list(beta=beta, theta=exp(theta),
+		se.beta=se.beta, se.theta=se.theta
+	)
 }
