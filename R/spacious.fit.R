@@ -155,7 +155,7 @@ cat("Converged at iteration",i,"\n")
 	se.beta <- rep(0, p)
 	se.theta <- rep(0, R)
 
-	if (nblocks == 1) {
+	if (nblocks <= 2) {
 		# don't use the sandwich
 		vcov.beta <- chol2inv(chol(A))
 		vcov.theta <- chol2inv(chol(FI))
@@ -211,11 +211,9 @@ cat("Converged at iteration",i,"\n")
 		vcov.theta <- chol2inv(chol(FI %*% chol2inv(chol(J.theta)) %*% FI))
 	}
 
-	se.beta <- sqrt(diag(vcov.beta))
-	for (i in 1:R) {
-# TODO: is there a better way to do this?
-		se.theta[i] <- exp(theta[i] + sqrt(vcov.theta[i,i])) - exp(theta[i])
-	}
+	# get the standard errors
+	se.beta  <- sqrt(diag(vcov.beta))
+	se.theta <- sqrt(diag(vcov.theta)) * exp(theta)
 
 	# return estimates and standard errors
 	list(beta=beta, theta=exp(theta),

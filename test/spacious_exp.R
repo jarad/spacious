@@ -12,8 +12,8 @@ require(geoR)
 set.seed(311)
 
 # generate data to use for fitting a block composite model
-n <- 500
-np <- 20   # number to predict
+n <- 250
+np <- 5   # number to predict
 
 # generate spatial locations S
 S <- cbind(runif(n+np), runif(n+np))
@@ -44,6 +44,7 @@ beta.spacious <- fit.spacious$beta
 theta.spacious <- fit.spacious$theta
 
 cat("Spacious estimates:",beta.spacious,theta.spacious,"\n")
+cat("Spacious SEs:",fit.spacious$se.beta,fit.spacious$se.theta,"\n")
 cat("Spacious execution time:\n")
 print(time.spacious)
 

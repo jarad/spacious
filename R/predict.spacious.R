@@ -1,6 +1,6 @@
 # predict values at new sites using fit from spacious block composite model
 "predict.spacious" <- function(object, newdata=NULL, newS=NULL,
-	interval = c("none", "confidence", "prediction"), level = 0.95, ...) {
+	interval = c("none", "prediction"), level = 0.95, ...) {
 
 # TODO: error check inputs
 
