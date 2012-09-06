@@ -155,59 +155,59 @@ cat("Converged at iteration",i,"\n")
 	se.beta <- rep(0, p)
 	se.theta <- rep(0, R)
 
-	if (nblocks <= 2) {
-		# don't use the sandwich
-		vcov.beta <- chol2inv(chol(A))
-		vcov.theta <- chol2inv(chol(FI))
-	} else {
-		# use the sandwich
+	# compute standard errors
 
-		J.beta  <- matrix(0, nrow=p, ncol=p)
-		J.theta <- FI
+	J.beta  <- matrix(0, nrow=p, ncol=p)
+	J.theta <- FI
 
-		for (i in 1:nrow(neighbors)) {
-			# which sites are in block i?
-			in.i <- which(B==neighbors[i,1] | B==neighbors[i,2])
-			n.i <- length(in.i)
-			Sigma.i <- compute_cov(cov, exp(theta), D[in.i,in.i])
-			invSigma.i <- chol2inv(chol(Sigma.i))
+	for (i in 1:nrow(neighbors)) {
+		# which sites are in block i?
+		in.i       <- which(B==neighbors[i,1] | B==neighbors[i,2])
+		n.i        <- length(in.i)
+		Sigma.i    <- compute_cov(cov, exp(theta), D[in.i,in.i])
+		invSigma.i <- chol2inv(chol(Sigma.i))
 
-			for (j in 1:nrow(neighbors)) {
-				# do pairs i and j have a common block?
-				if (!any(neighbors[i,] == neighbors[j,1]) & !any(neighbors[i,] == neighbors[j,2])) {
-					next;
-				}
+		for (j in 1:nrow(neighbors)) {
+			# do pairs i and j have a common block?
+			if (!any(neighbors[i,] == neighbors[j,1]) & !any(neighbors[i,] == neighbors[j,2])) {
+				next;
+			}
 
-				# which sites are in block j?
-				in.j <- which(B==neighbors[j,1] | B==neighbors[j,2])
-				n.j <- length(in.j)
-				Sigma.j <- compute_cov(cov, exp(theta), D[in.j,in.j])
-				invSigma.j <- chol2inv(chol(Sigma.j))
+			if (i == j) {
+				# this should only happen when we have one block
+				J.beta <- J.beta + t(X[in.i,]) %*% invSigma.i %*% X[in.i,]
+				next;
+			}
 
-				Sigma.ij <- compute_cov(cov, exp(theta), D[c(in.i,in.j),c(in.i,in.j)])
+			# which sites are in block j?
+			in.j       <- which(B==neighbors[j,1] | B==neighbors[j,2])
+			n.j        <- length(in.j)
+			Sigma.j    <- compute_cov(cov, exp(theta), D[in.j,in.j])
+			invSigma.j <- chol2inv(chol(Sigma.j))
 
-				J.beta <- J.beta + t(X[in.i,]) %*% invSigma.i %*% Sigma.ij[1:n.i,n.i+1:n.j] %*% invSigma.j %*% X[in.j,]
+			Sigma.ij <- compute_cov(cov, exp(theta), D[c(in.i,in.j),c(in.i,in.j)])
 
-				if (j > i) {
-					# update J.theta
+			J.beta <- J.beta + t(X[in.i,]) %*% invSigma.i %*% Sigma.ij[1:n.i,n.i+1:n.j] %*% invSigma.j %*% X[in.j,]
+
+			if (j > i) {
+				# update J.theta
 # TODO: speed this up (maybe)
-					sapply(seq.R, function(r) {
-						sapply(r:R, function(s) {
-							B.ir <- invSigma.i %*% partials[[r]](theta, n.i, in.i) %*% invSigma.i
-							B.js <- invSigma.j %*% partials[[s]](theta, n.j, in.j) %*% invSigma.j
-							add <- sum(diag( B.ir %*% Sigma.ij[1:n.i,n.i+1:n.j] %*% B.js %*% Sigma.ij[n.i+1:n.j,1:n.i] ))
+				sapply(seq.R, function(r) {
+					sapply(r:R, function(s) {
+						B.ir <- invSigma.i %*% partials[[r]](theta, n.i, in.i) %*% invSigma.i
+						B.js <- invSigma.j %*% partials[[s]](theta, n.j, in.j) %*% invSigma.j
+						add <- sum(diag( B.ir %*% Sigma.ij[1:n.i,n.i+1:n.j] %*% B.js %*% Sigma.ij[n.i+1:n.j,1:n.i] ))
 
-							J.theta[r,s] <- J.theta[r,s] + add
-							if (r != s) {
-								J.theta[s,r] <- J.theta[s,r] + add
-							}
-						})
+						J.theta[r,s] <- J.theta[r,s] + add
+						if (r != s) {
+							J.theta[s,r] <- J.theta[s,r] + add
+						}
 					})
-				}
+				})
 			}
 		}
 
-		vcov.beta <- chol2inv(chol(A %*% chol2inv(chol(J.beta)) %*% A))
+		vcov.beta  <- chol2inv(chol(A %*% chol2inv(chol(J.beta)) %*% A))
 		vcov.theta <- chol2inv(chol(FI %*% chol2inv(chol(J.theta)) %*% FI))
 	}
 
