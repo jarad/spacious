@@ -43,7 +43,7 @@ time.spacious <- proc.time() - time.spacious
 beta.spacious <- fit.spacious$beta
 theta.spacious <- fit.spacious$theta
 
-summary(fit.spacious)
+print(summary(fit.spacious))
 
 cat("Spacious estimates:",beta.spacious,theta.spacious,"\n")
 cat("Spacious SEs:",fit.spacious$se.beta,fit.spacious$se.theta,"\n")
