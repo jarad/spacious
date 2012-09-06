@@ -213,10 +213,11 @@ cat("Converged at iteration",i,"\n")
 
 	# get the standard errors
 	se.beta  <- sqrt(diag(vcov.beta))
-	se.theta <- sqrt(diag(vcov.theta)) * exp(theta)
+	se.theta <- as.vector(sqrt(diag(vcov.theta)) * exp(theta))
 
 	# return estimates and standard errors
 	list(beta=beta, theta=exp(theta),
-		se.beta=se.beta, se.theta=se.theta
+		se.beta=se.beta, se.theta=se.theta,
+		vcov.beta=vcov.beta, vcov.theta=vcov.theta
 	)
 }
