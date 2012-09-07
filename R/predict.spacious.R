@@ -62,8 +62,8 @@
 		} else {
 			for (b in 1:nB) {
 				in_poly <- point.in.polygon(newS[,1], newS[,2],
-					fit.spacious$grid@polygons[[b]]@Polygons[[1]]@coords[,1],
-					fit.spacious$grid@polygons[[b]]@Polygons[[1]]@coords[,2]) == 1
+					object$grid@polygons[[b]]@Polygons[[1]]@coords[,1],
+					object$grid@polygons[[b]]@Polygons[[1]]@coords[,2]) == 1
 
 				newB[in_poly] <- b
 			}
