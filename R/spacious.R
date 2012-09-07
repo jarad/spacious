@@ -2,7 +2,8 @@
 "spacious" <- function(
 	formula, data=NULL, S,                  # input data
 	cov="exp", cov.inits=NULL,              # covariance function
-	nblocks=1, grid.type="regular"          # blocking style
+	nblocks=1, grid.type="regular",         # blocking style
+	verbose=FALSE, tol=1e-3, maxIter=100    # algorithm control params
 ) {
 # TODO: let user specify block memberships B
 # TODO: let user specify neighbors
@@ -95,7 +96,8 @@
 	}
 
 # TODO: move computation of D to spacious.fit()
-	fit <- spacious.fit(y, X, D, nblocks, B, neighbors, cov, n, p, R, theta)
+	fit <- spacious.fit(y, X, D, nblocks, B, neighbors, cov, n, p, R, theta,
+		verbose, tol, maxIter)
 
 	# construct output fit
 	fit$beta  <- as.vector(fit$beta)

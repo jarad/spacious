@@ -38,7 +38,7 @@ X <- matrix(1, nrow=length(y), ncol=1)
 x1 <- rnorm(n+np)
 time.spacious <- proc.time()
 #fit.spacious <- spacious(y, X, S, cov="exp", nblocks=1^2)
-fit.spacious <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="exp", nblocks=2^2)
+fit.spacious <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="exp", nblocks=2^2, verbose=TRUE)
 time.spacious <- proc.time() - time.spacious
 beta.spacious <- fit.spacious$beta
 theta.spacious <- fit.spacious$theta
@@ -50,7 +50,7 @@ cat("Spacious SEs:",fit.spacious$se.beta,fit.spacious$se.theta,"\n")
 cat("Spacious execution time:\n")
 print(time.spacious)
 
-preds <- predict(fit.spacious, newdata=data.frame(x2=x1[(n+1):(n+np)]), newS=S[(n+1):(n+np),])
+preds <- predict(fit.spacious, newdata=data.frame(x2=x1[(n+1):(n+np)]), newS=S[(n+1):(n+np),], interval="prediction", level=0.9)
 cat("Predictions:\n")
 print(preds)
 cat("Actual:\n")

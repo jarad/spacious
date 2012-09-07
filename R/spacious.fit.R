@@ -1,6 +1,7 @@
 # function to run algorithm for fitting a block composite model
 
-"spacious.fit" <- function(y, X, D, nblocks, B, neighbors, cov, n, p, R, theta) {
+"spacious.fit" <- function(y, X, D, nblocks, B, neighbors, cov, n, p, R, theta,
+	verbose, tol=1e-3, maxIter=100) {
 	# y: response
 	# X: model matrix
 	# D: distance matrix
@@ -11,6 +12,10 @@
 	# p: number of parameters for mean (columns of X)
 	# R: number of covariance function parameters
 	# theta: initial values for covariance parameters
+
+	# verbose: print messages?
+	# tol: error tolerance for identifying convergence
+	# maxIter: maximum number of Fisher scoring iterations
 
 	nH <- R*(R+1)/2
 
@@ -126,8 +131,7 @@
 
 	# get initial beta from initial theta
 	beta <- update_beta(theta)
-	maxIter <- 100
-	tol <- 1e-3
+
 	for (i in 1:maxIter) {
 		prev.beta <- beta
 		prev.theta <- theta
@@ -140,10 +144,13 @@
 #cat("iter",i,":"); print( c(beta, exp(theta)) )
 
 		if (i > 1) {
-			# have we converged?
 # TODO: figure out the best way to identify convergence
+			# have we converged?
 			if ( max( c(abs(prev.beta - beta),abs(prev.theta-theta)) ) <= tol ) {
-cat("Converged at iteration",i,"\n")
+				if (verbose) {
+					cat("Converged at iteration",i,"\n")
+				}
+
 				break
 			}
 		}
