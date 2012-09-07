@@ -74,12 +74,12 @@
 			}
 
 			# block memberships for all points
-			B <- rbind(object$B, newB)
+			B <- c(object$B, newB)
 
 			# predict for each unique block
 			y_0[1:nNew] <- X %*% object$beta
 
-			# unique blocks we have data points for
+			# unique blocks where we have points to predict
 			uB <- unique(newB)
 
 # TODO: we could re-construct this so that we only invert each matrix once. worth considering if speed more important than memory.
@@ -185,8 +185,8 @@
 
 	if (interval == "prediction") {
 		tile <- qnorm((1-level)/2, lower.tail=FALSE)
-		return(data.frame(y_0=y_0, lwr=y_0-tile*sd.pred, upr=y_0+tile*sd.pred))
+		return(data.frame(y=y_0, lwr=y_0-tile*sd.pred, upr=y_0+tile*sd.pred))
 	} else {
-		return( as.vector(y_0) )
+		return(data.frame(y=y_0))
 	}
 }
