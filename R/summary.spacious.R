@@ -15,8 +15,8 @@
 }
 
 # print the summary
-"print.summary.spacious" <- function(object, ...) {
+"print.summary.spacious" <- function(x, ...) {
 	cat("Spacious fit:\n")
-	print(object$df.beta)
-	print(object$df.theta)
+	print(x$df.beta)
+	print(x$df.theta)
 }
