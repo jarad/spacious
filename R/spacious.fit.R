@@ -1,6 +1,6 @@
 # function to run algorithm for fitting a block composite model
 
-"spacious.fit" <- function(y, X, D, nblocks, B, neighbors, cov, n, p, R, theta,
+"spacious.fit" <- function(y, X, D, nblocks, B, neighbors, cov, n, p, R, theta, nu,
 	verbose, tol=1e-3, maxIter=100) {
 	# y: response
 	# X: model matrix
@@ -42,6 +42,25 @@
 				-exp(theta[2]+theta[3]) * D[in.pair,in.pair] * exp(-exp(theta[3]) * D[in.pair,in.pair])
 			}
 		)
+	} else if (cov == "matern") {
+		partials <- list(
+			function(theta, n.pair, in.pair) {
+				exp(theta[1])*diag(n.pair)
+			},
+			function(theta, n.pair, in.pair) {
+				mid <- 2*D[in.pair,in.pair]*exp(theta[3])*sqrt(nu)
+				rho <- mid^nu * besselK(mid, nu)/(2^(nu-1) * gamma(nu))
+				rho[is.na(rho)] <- 1
+				exp(theta[2])*rho
+			},
+			function(theta, n.pair, in.pair) {
+				mid <- 2*D[in.pair,in.pair]*exp(theta[3])*sqrt(nu)
+				rho <- -mid^(nu+1)*besselK(mid, nu-1)/(2^(nu-1) * gamma(nu))
+				#rho <- ( nu * mid^nu * besselK(mid, nu) - 0.5 * mid^(nu+1) * ( besselK(mid, nu-1) + besselK(mid, nu+1) ) )/(2^(nu-1)*gamma(nu))
+				rho[is.na(rho)] <- 0
+				exp(theta[2])*rho
+			}
+		)
 	} else {
 		stop(paste("Unknown covariance type",cov))
 	}
@@ -59,7 +78,7 @@
 			in.pair <- B==row[1] | B==row[2]
 			n.pair <- sum(in.pair)
 
-			Sigma <- compute_cov(cov, exp(theta), D[in.pair,in.pair])
+			Sigma <- compute_cov(cov, exp(theta), D[in.pair,in.pair], nu=nu)
 			invSigma <- chol2inv(chol(Sigma))
 			A <<- A + t(X[in.pair,]) %*% invSigma %*% X[in.pair,]
 			b <<- b + t(X[in.pair,]) %*% invSigma %*% y[in.pair]
@@ -84,7 +103,7 @@
 			n.pair <- sum(in.pair)
 
 # TODO: figure out if it is posible to do this once since it's done in beta update as well (maybe merge stuff?)
-			Sigma <- compute_cov(cov, exp(theta), D[in.pair,in.pair])
+			Sigma <- compute_cov(cov, exp(theta), D[in.pair,in.pair], nu=nu)
 			invSigma <- chol2inv(chol(Sigma))
 
 # TODO: see if any of this can be cleaned up
@@ -141,7 +160,7 @@
 
 		# update beta
 		beta <- update_beta(theta)
-#cat("iter",i,":"); print( c(beta, exp(theta)) )
+cat("iter",i,":"); print( c(beta, exp(theta)) )
 
 		if (i > 1) {
 # TODO: figure out the best way to identify convergence
@@ -171,7 +190,7 @@
 		# which sites are in block i?
 		in.i       <- which(B==neighbors[i,1] | B==neighbors[i,2])
 		n.i        <- length(in.i)
-		Sigma.i    <- compute_cov(cov, exp(theta), D[in.i,in.i])
+		Sigma.i    <- compute_cov(cov, exp(theta), D[in.i,in.i], nu=nu)
 		invSigma.i <- chol2inv(chol(Sigma.i))
 
 		for (j in 1:nrow(neighbors)) {
@@ -189,10 +208,10 @@
 			# which sites are in block j?
 			in.j       <- which(B==neighbors[j,1] | B==neighbors[j,2])
 			n.j        <- length(in.j)
-			Sigma.j    <- compute_cov(cov, exp(theta), D[in.j,in.j])
+			Sigma.j    <- compute_cov(cov, exp(theta), D[in.j,in.j], nu=nu)
 			invSigma.j <- chol2inv(chol(Sigma.j))
 
-			Sigma.ij <- compute_cov(cov, exp(theta), D[c(in.i,in.j),c(in.i,in.j)])
+			Sigma.ij <- compute_cov(cov, exp(theta), D[c(in.i,in.j),c(in.i,in.j)], nu=nu)
 
 			J.beta <- J.beta + t(X[in.i,]) %*% invSigma.i %*% Sigma.ij[1:n.i,n.i+1:n.j] %*% invSigma.j %*% X[in.j,]
 

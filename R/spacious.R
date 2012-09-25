@@ -2,6 +2,7 @@
 "spacious" <- function(
 	formula, data=NULL, S,                  # input data
 	cov="exp", cov.inits=NULL,              # covariance function
+	smoothness=0.5,
 	nblocks=1, grid.type="regular",         # blocking style
 	verbose=FALSE, tol=1e-3, maxIter=100    # algorithm control params
 ) {
@@ -23,6 +24,8 @@
 
 	# handle covariance types
 	if (cov == "exp") {
+		R <- 3
+	} else if (cov == "matern") {
 		R <- 3
 	} else {
 		stop(paste("Unknown covariance type",cov))
@@ -96,7 +99,7 @@
 	}
 
 # TODO: move computation of D to spacious.fit()
-	fit <- spacious.fit(y, X, D, nblocks, B, neighbors, cov, n, p, R, theta,
+	fit <- spacious.fit(y, X, D, nblocks, B, neighbors, cov, n, p, R, theta, nu=smoothness,
 		verbose, tol, maxIter)
 
 	# construct output fit
@@ -111,6 +114,7 @@
 	fit$grid      <- grid
 	fit$neighbors <- neighbors
 	fit$cov       <- cov
+	fit$nu        <- smoothness
 
 	fit$terms  <- attr(mf, "terms")
 	fit$fitted <- X %*% fit$beta

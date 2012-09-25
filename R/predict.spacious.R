@@ -38,7 +38,7 @@
 		n <- nrow(S)
 
 		# compute covariance matrix
-		Sigma <- compute_cov(object$cov, object$theta, D)
+		Sigma <- compute_cov(object$cov, object$theta, D, nu=object$nu)
 
 		# get the predictions
 		y_0[1:nNew] <- X %*% object$beta + Sigma[nFit+1:nNew,1:nFit] %*%
@@ -117,7 +117,7 @@
 					in.pair.n1 <- c(in.b, in.n1)
 
 					# covariance for b and n1
-					Sigma.n1    <- compute_cov(object$cov, object$theta, D[in.pair.n1,in.pair.n1])
+					Sigma.n1    <- compute_cov(object$cov, object$theta, D[in.pair.n1,in.pair.n1], nu=object$nu)
 					invSigma.n1 <- chol2inv(chol(Sigma.n1))
 
 					A_0 <- A_0 + invSigma.n1[1:n.in.new,1:n.in.new]
@@ -141,11 +141,11 @@
 							in.n1n2 <- c(in.n1, in.n2)
 
 							# covariance for b and n2
-							Sigma.n2    <- compute_cov(object$cov, object$theta, D[in.pair.n2,in.pair.n2])
+							Sigma.n2    <- compute_cov(object$cov, object$theta, D[in.pair.n2,in.pair.n2], nu=object$nu)
 							invSigma.n2 <- chol2inv(chol(Sigma.n2))
 
 							# covariance for n1 and n2
-							Sigma.n1n2 <- compute_cov(object$cov, object$theta, D[in.n1n2,in.n1n2])
+							Sigma.n1n2 <- compute_cov(object$cov, object$theta, D[in.n1n2,in.n1n2], nu=object$nu)
 
 							J_0 <- J_0 + invSigma.n1[1:n.in.new,n.in.new+n.in.obs+1:n.in.n1] %*%
 								Sigma.n1n2[1:n.in.n1,n.in.n1+1:n.in.n2] %*% invSigma.n2[n.in.new+n.in.obs+1:n.in.n2,1:n.in.new]
@@ -161,7 +161,7 @@
 					# complete prediction variances
 					H_0 <- -A_0
 
-					Sigma <- compute_cov(object$cov, object$theta, D[in.b,in.b])
+					Sigma <- compute_cov(object$cov, object$theta, D[in.b,in.b], nu=object$nu)
 					J_0   <- J_0 + B_0 %*% Sigma %*% t(B_0)
 
 					for (n1 in neighbors) {
@@ -172,7 +172,7 @@
 						in.pair.n1 <- c(in.b, in.n1)
 
 						# covariance for b and n1
-						Sigma.n1    <- compute_cov(object$cov, object$theta, D[in.pair.n1,in.pair.n1])
+						Sigma.n1    <- compute_cov(object$cov, object$theta, D[in.pair.n1,in.pair.n1], nu=object$nu)
 						invSigma.n1 <- chol2inv(chol(Sigma.n1))
 
 						J_0 <- J_0 + 2 * B_0 %*% Sigma.n1[1:n.in.b,n.in.b+1:n.in.n1] %*% invSigma.n1[n.in.b+1:n.in.n1,1:n.in.new]
