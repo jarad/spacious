@@ -1,5 +1,5 @@
 # predict values at new sites using fit from spacious block composite model
-"predict.spacious" <- function(object, newdata=NULL, newS=NULL,
+"predict.spacious" <- function(object, newdata=NULL, newS=NULL, D=NULL,
 	interval = "none", level = 0.95, ...) {
 
 # TODO: error check inputs
@@ -20,9 +20,11 @@
 	# locations for all points
 	S <- rbind(object$S, newS)
 
-	# compute distance matrix
-	D <- rdist(S)
-	D[row(D)==col(D)] <- 0
+	if (is.null(D)) {
+		# compute distance matrix
+		D <- rdist(S)
+		D[row(D)==col(D)] <- 0
+	}
 
 	# vector to hold predictions
 	y_0      <- rep(NA, nNew)
@@ -63,7 +65,7 @@
 			for (b in 1:nB) {
 				in_poly <- point.in.polygon(newS[,1], newS[,2],
 					object$grid@polygons[[b]]@Polygons[[1]]@coords[,1],
-					object$grid@polygons[[b]]@Polygons[[1]]@coords[,2]) == 1
+					object$grid@polygons[[b]]@Polygons[[1]]@coords[,2]) >= 1
 
 				newB[in_poly] <- b
 			}
