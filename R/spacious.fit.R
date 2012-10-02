@@ -160,7 +160,10 @@
 
 		# update beta
 		beta <- update_beta(theta)
-cat("iter",i,":"); print( c(beta, exp(theta)) )
+
+		if (verbose) {
+			cat("iter",i,":"); print( c(beta, exp(theta)) )
+		}
 
 		if (i > 1) {
 # TODO: figure out the best way to identify convergence
