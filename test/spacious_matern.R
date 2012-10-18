@@ -25,10 +25,19 @@ D <- rdist(S); D[row(D)==col(D)] <- 0
 nugget <- 0.5
 tau2 <- 0.5
 range <- 1.5
-smooth <- 0.50  # 0.5 = exponential cov
+smooth <- 1.50  # 0.5 = exponential cov
 mu <- 5
-#Sigma <- nugget * diag(n) + tau2 * matern(D, range, smooth)
-Sigma <- nugget * diag(n+np) + tau2 * exp(-range * D)
+Sigma <- nugget * diag(n+np) + tau2 * matern(D, 1/range, smooth)
+#Sigma <- nugget * diag(n+np) + tau2 * exp(-range * D)
+
+if (0) {
+nu <- smooth
+    mid <- 2*D*range*sqrt(nu)
+    rho <- mid^nu * besselK(mid, nu)/(2^(nu-1) * gamma(nu))
+    rho[is.na(rho)] <- 1
+    #theta[1] * diag(nrow(D)) + theta[2] * mid^nu * besselK(mid, nu)/(2^(nu-1) * gamma(nu))
+Sigma <- nugget * diag(nrow(D)) + tau2 * rho
+}
 
 # generate data
 y <- mvrnorm(1, mu=rep(mu, n+np), Sigma=Sigma)
@@ -38,7 +47,7 @@ X <- matrix(1, nrow=length(y), ncol=1)
 x1 <- rnorm(n+np)
 time.spacious <- proc.time()
 #fit.spacious <- spacious(y, X, S, cov="exp", nblocks=1^2)
-fit.spacious <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="exp", nblocks=2^2, verbose=TRUE)
+fit.spacious <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="matern", smoothness=smooth, nblocks=2^2, verbose=TRUE)
 time.spacious <- proc.time() - time.spacious
 beta.spacious <- fit.spacious$beta
 theta.spacious <- fit.spacious$theta
@@ -62,7 +71,7 @@ if (0) {
 # try likfit
 gd <- as.geodata(cbind(S[1:n,],y[1:n]))
 time.likfit <- proc.time()
-fit.likfit <- likfit(gd, ini.cov.pars=c(1.22,1.22))
+fit.likfit <- likfit(gd, ini.cov.pars=c(0.5,0.5), fix.kappa=TRUE, kappa=smooth, cov.model="matern")
 time.likfit <- proc.time() - time.likfit
 
 beta.likfit <- fit.likfit$beta

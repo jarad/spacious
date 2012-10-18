@@ -1,1 +1,7 @@
-exportPattern("^[[:alpha:]]+")
+# S3 methods
+S3method(summary, spacious)
+S3method(predict, spacious)
+S3method(print, summary.spacious)
+
+# functions to export
+export(spacious)
