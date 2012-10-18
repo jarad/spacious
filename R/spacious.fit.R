@@ -1,6 +1,6 @@
 # function to run algorithm for fitting a block composite model
 
-"spacious.fit" <- function(y, X, D, nblocks, B, neighbors, cov, n, p, R, theta, nu,
+"spacious.fit" <- function(y, X, D, nblocks, B, neighbors, cov, n, p, R, theta, theta.fixed,
 	verbose, tol=1e-3, maxIter=100) {
 	# y: response
 	# X: model matrix
@@ -12,6 +12,7 @@
 	# p: number of parameters for mean (columns of X)
 	# R: number of covariance function parameters
 	# theta: initial values for covariance parameters
+	# theta.fixed: TRUE/FALSE indicating if parameter is fixed
 
 	# verbose: print messages?
 	# tol: error tolerance for identifying convergence
@@ -24,6 +25,11 @@
 	seq.R <- 1:R
 	seq.R2 <- 1:(R^2)
 	seq.RH <- 1:nH
+
+	# how many parameters are not fixed?
+	Nnot_fixed <- length(theta.fixed)-sum(theta.fixed)
+	which.fixed <- which(theta.fixed==TRUE)
+	which.not_fixed <- which(theta.fixed==FALSE)
 
 	# a list of functions to compute partial derivates
 	# with respect to each covariance function param
@@ -48,15 +54,15 @@
 				exp(theta[1])*diag(n.pair)
 			},
 			function(theta, n.pair, in.pair) {
-				mid <- 2*D[in.pair,in.pair]*exp(theta[3])*sqrt(nu)
-				rho <- mid^nu * besselK(mid, nu)/(2^(nu-1) * gamma(nu))
+				mid <- 2*D[in.pair,in.pair]*exp(theta[3])*sqrt(theta[4])
+				rho <- mid^theta[4] * besselK(mid, theta[4])/(2^(theta[4]-1) * gamma(theta[4]))
 				rho[is.na(rho)] <- 1
 				exp(theta[2])*rho
 			},
 			function(theta, n.pair, in.pair) {
-				mid <- 2*D[in.pair,in.pair]*exp(theta[3])*sqrt(nu)
-				rho <- -mid^(nu+1)*besselK(mid, nu-1)/(2^(nu-1) * gamma(nu))
-				#rho <- ( nu * mid^nu * besselK(mid, nu) - 0.5 * mid^(nu+1) * ( besselK(mid, nu-1) + besselK(mid, nu+1) ) )/(2^(nu-1)*gamma(nu))
+				mid <- 2*D[in.pair,in.pair]*exp(theta[3])*sqrt(theta[4])
+				rho <- -mid^(theta[4]+1)*besselK(mid, theta[4]-1)/(2^(theta[4]-1) * gamma(theta[4]))
+				#rho <- ( theta[4] * mid^theta[4] * besselK(mid, theta[4]) - 0.5 * mid^(theta[4]+1) * ( besselK(mid, theta[4]-1) + besselK(mid, theta[4]+1) ) )/(2^(theta[4]-1)*gamma(theta[4]))
 				rho[is.na(rho)] <- 0
 				exp(theta[2])*rho
 			}
@@ -78,7 +84,7 @@
 			in.pair <- B==row[1] | B==row[2]
 			n.pair <- sum(in.pair)
 
-			Sigma <- compute_cov(cov, exp(theta), D[in.pair,in.pair], nu=nu)
+			Sigma <- compute_cov(cov, exp(theta), D[in.pair,in.pair])
 			invSigma <- chol2inv(chol(Sigma))
 			A <<- A + t(X[in.pair,]) %*% invSigma %*% X[in.pair,]
 			b <<- b + t(X[in.pair,]) %*% invSigma %*% y[in.pair]
@@ -94,6 +100,10 @@
 	FI <- matrix(0, nrow=R, ncol=R)
 
 	"update_theta" <- function(beta, theta) {
+		if (Nnot_fixed == 0) {   # don't do any updating
+			return(theta)
+		}
+
 		u[seq.R]   <<- 0
 		H[seq.RH]  <<- 0
 		FI[seq.R2] <<- 0
@@ -103,7 +113,7 @@
 			n.pair <- sum(in.pair)
 
 # TODO: figure out if it is posible to do this once since it's done in beta update as well (maybe merge stuff?)
-			Sigma <- compute_cov(cov, exp(theta), D[in.pair,in.pair], nu=nu)
+			Sigma <- compute_cov(cov, exp(theta), D[in.pair,in.pair])
 			invSigma <- chol2inv(chol(Sigma))
 
 # TODO: see if any of this can be cleaned up
@@ -113,6 +123,8 @@
 
 			# compute the Ws
 			for (r in 1:R) {
+				if (theta.fixed[r]) { next; }
+
 				partial <- partials[[r]](theta, n.pair, in.pair)
 				W[[r]] <<- invSigma %*% partial
 				u[r] <<- u[r] -0.5 * sum( diag(W[[r]]) ) + 0.5 * t(q) %*% partial %*% q
@@ -123,7 +135,9 @@
 			index <- 1
 			sapply(seq.R, function(r) {
 				sapply(r:R, function(s) {
-					H[index] <<- H[index] + 0.5 * sum(diag( W[[r]] %*% W[[s]] ))
+					if (!theta.fixed[r] & !theta.fixed[s]) {
+						H[index] <<- H[index] + 0.5 * sum(diag( W[[r]] %*% W[[s]] ))
+					}
 					index <<- index+1
 				})
 			})
@@ -132,9 +146,11 @@
 		index <- 1
 		sapply(seq.R, function(r) {
 			sapply(r:R, function(s) {
-				FI[r,s] <<- H[index]
-				if (r != s) {
-					FI[s,r] <<- H[index]
+				if (!theta.fixed[r] & !theta.fixed[s]) {
+					FI[r,s] <<- H[index]
+					if (r != s) {
+						FI[s,r] <<- H[index]
+					}
 				}
 				index <<- index+1
 			})
@@ -142,7 +158,10 @@
 #		invFI <- chol2inv(chol(FI))
 #		invFI <- qr.solve(qr(FI))
 
-		theta + chol2inv(chol(FI)) %*% u
+		theta[which.not_fixed] <- theta[which.not_fixed] +
+			chol2inv(chol(FI[which.not_fixed,which.not_fixed])) %*% u[which.not_fixed]
+
+		theta
 	}
 
 # TODO: allow user to set control parameters
@@ -151,7 +170,7 @@
 	# get initial beta from initial theta
 	beta <- update_beta(theta)
 
-	for (i in 1:maxIter) {
+	for (iter in 1:maxIter) {
 		prev.beta <- beta
 		prev.theta <- theta
 
@@ -162,20 +181,34 @@
 		beta <- update_beta(theta)
 
 		if (verbose) {
-			cat("iter",i,":"); print( c(beta, exp(theta)) )
+			cat("iter",iter,":"); print( c(beta, exp(theta)) )
 		}
 
-		if (i > 1) {
+		if (iter > 1) {
 # TODO: figure out the best way to identify convergence
 			# have we converged?
-			if ( max( c(abs(prev.beta - beta),abs(prev.theta-theta)) ) <= tol ) {
+			max_diff <- 0
+			if (Nnot_fixed > 0) {
+				max_diff <- max( c(
+					abs(prev.beta - beta)/abs(beta),
+					abs(prev.theta[which.not_fixed]-theta[which.not_fixed])/abs(theta[which.not_fixed])
+				) )
+			}
+
+			if ( max_diff <= tol ) {
 				if (verbose) {
-					cat("Converged at iteration",i,"\n")
+					cat("Converged at iteration",iter,"\n")
 				}
 
 				break
 			}
 		}
+	}
+
+	convergence <- TRUE
+	if (iter == maxIter) {
+		warning("Possible issues with convergence: maximum number of iterations reached.")
+		convergence <- FALSE
 	}
 
 	# compute covariance matrix of parameters
@@ -185,7 +218,6 @@
 	se.theta <- rep(0, R)
 
 	# compute standard errors
-
 	J.beta  <- matrix(0, nrow=p, ncol=p)
 	J.theta <- FI
 
@@ -193,7 +225,7 @@
 		# which sites are in block i?
 		in.i       <- which(B==neighbors[i,1] | B==neighbors[i,2])
 		n.i        <- length(in.i)
-		Sigma.i    <- compute_cov(cov, exp(theta), D[in.i,in.i], nu=nu)
+		Sigma.i    <- compute_cov(cov, exp(theta), D[in.i,in.i])
 		invSigma.i <- chol2inv(chol(Sigma.i))
 
 		for (j in 1:nrow(neighbors)) {
@@ -211,10 +243,10 @@
 			# which sites are in block j?
 			in.j       <- which(B==neighbors[j,1] | B==neighbors[j,2])
 			n.j        <- length(in.j)
-			Sigma.j    <- compute_cov(cov, exp(theta), D[in.j,in.j], nu=nu)
+			Sigma.j    <- compute_cov(cov, exp(theta), D[in.j,in.j])
 			invSigma.j <- chol2inv(chol(Sigma.j))
 
-			Sigma.ij <- compute_cov(cov, exp(theta), D[c(in.i,in.j),c(in.i,in.j)], nu=nu)
+			Sigma.ij <- compute_cov(cov, exp(theta), D[c(in.i,in.j),c(in.i,in.j)])
 
 			J.beta <- J.beta + t(X[in.i,]) %*% invSigma.i %*% Sigma.ij[1:n.i,n.i+1:n.j] %*% invSigma.j %*% X[in.j,]
 
@@ -223,13 +255,15 @@
 # TODO: speed this up (maybe)
 				sapply(seq.R, function(r) {
 					sapply(r:R, function(s) {
-						B.ir <- invSigma.i %*% partials[[r]](theta, n.i, in.i) %*% invSigma.i
-						B.js <- invSigma.j %*% partials[[s]](theta, n.j, in.j) %*% invSigma.j
-						add <- sum(diag( B.ir %*% Sigma.ij[1:n.i,n.i+1:n.j] %*% B.js %*% Sigma.ij[n.i+1:n.j,1:n.i] ))
+						if (!theta.fixed[r] & !theta.fixed[s]) {
+							B.ir <- invSigma.i %*% partials[[r]](theta, n.i, in.i) %*% invSigma.i
+							B.js <- invSigma.j %*% partials[[s]](theta, n.j, in.j) %*% invSigma.j
+							add <- sum(diag( B.ir %*% Sigma.ij[1:n.i,n.i+1:n.j] %*% B.js %*% Sigma.ij[n.i+1:n.j,1:n.i] ))
 
-						J.theta[r,s] <- J.theta[r,s] + add
-						if (r != s) {
-							J.theta[s,r] <- J.theta[s,r] + add
+							J.theta[r,s] <- J.theta[r,s] + add
+							if (r != s) {
+								J.theta[s,r] <- J.theta[s,r] + add
+							}
 						}
 					})
 				})
@@ -237,7 +271,10 @@
 		}
 
 		vcov.beta  <- chol2inv(chol(A %*% chol2inv(chol(J.beta)) %*% A))
-		vcov.theta <- chol2inv(chol(FI %*% chol2inv(chol(J.theta)) %*% FI))
+		if (Nnot_fixed > 0) {
+			vcov.theta[which.not_fixed,which.not_fixed] <- chol2inv(chol(FI[which.not_fixed,which.not_fixed] %*%
+				chol2inv(chol(J.theta[which.not_fixed,which.not_fixed])) %*% FI[which.not_fixed,which.not_fixed]))
+		}
 	}
 
 	# get the standard errors
@@ -247,6 +284,8 @@
 	# return estimates and standard errors
 	list(beta=beta, theta=exp(theta),
 		se.beta=se.beta, se.theta=se.theta,
-		vcov.beta=vcov.beta, vcov.theta=vcov.theta
+		vcov.beta=vcov.beta, vcov.theta=vcov.theta,
+		convergence=convergence,
+		nIter=iter
 	)
 }
