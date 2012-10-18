@@ -15,10 +15,10 @@
 	\item{S}{n by 2 matrix of spatial locations}
 	\item{cov}{spatial covariance type}
 	\item{cov.inits}{initial values for covariance function}
-        \item{B}{blocking structure}
-        \item{neighbors}{??}
-        \item{D}{distance matrix??}
-        \item{fixed}{??}
+        \item{B}{TODO: blocking structure}
+        \item{neighbors}{TODO}
+        \item{D}{TODO}
+        \item{fixed}{TODO}
 	\item{nblocks}{number of blocks to divide data into}
 	\item{grid.type}{type of blocking structure to place points into}
 	\item{verbose}{show messages during fit}
