@@ -8,7 +8,7 @@ if ("package:spacious" %in% search()) {
 # load the package
 require(spacious)
 
-require(geoR)
+require(geoR) # is this necessary?
 set.seed(311)
 
 # generate data to use for fitting a block composite model
