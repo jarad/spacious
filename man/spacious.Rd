@@ -25,8 +25,6 @@
 	\item{tol}{convergence tolerance}
 	\item{maxIter}{maximum Fisher scoring iterations}
 }
-\seealso{
-}
 \examples{
   n = 100
   S = matrix(runif(n*2), n, 2)
