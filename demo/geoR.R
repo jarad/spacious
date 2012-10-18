@@ -10,7 +10,7 @@ np <- 5   # number to predict
 S <- cbind(runif(n+np), runif(n+np))
 
 # distance matrix
-D <- rdist(S); D[row(D)==col(D)] <- 0
+D <- rdist(S); diag(D) <- 0
 
 # Covariance function parameters common to exponential and matern
 nugget <- 0.5
