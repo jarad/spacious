@@ -3,12 +3,10 @@
 	formula, data, S=NULL,                  # input data
 	cov="exp", cov.inits=NULL,              # covariance function
 	B=NULL, neighbors=NULL, D=NULL,
-	smoothness=0.5,
+	fixed=list(smoothness=0.5),             # fixed parameters
 	nblocks=1, grid.type="regular",         # blocking style
 	verbose=FALSE, tol=1e-3, maxIter=100    # algorithm control params
 ) {
-# TODO: let user specify block memberships B
-# TODO: let user specify neighbors
 # TODO: error check inputs
 
 	if (is.null(S)) {
@@ -31,20 +29,73 @@
 	n <- nrow(X)
 	p <- ncol(X)
 
-	# create distance matrix from spatial locations
 	if (is.null(D)) {
+		# create distance matrix from spatial locations
 		D <- rdist(S)
 		D[row(D)==col(D)] <- 0
 	}
 
-	# handle covariance types
+	# setup based on covariance types
+	R <- NA    # number of covariance parameters
+	theta <- c()
+	theta.fixed <- c()
 	if (cov == "exp") {
 		R <- 3
+
+		theta <- rep(0, R)
+		theta.fixed <- rep(FALSE, R)
+
+		if (!is.null(fixed$nugget)) {
+			theta[1] <- log(fixed$nugget)
+			theta.fixed[1] <- TRUE
+		}
+		if (!is.null(fixed$psill)) {
+			theta[2] <- log(fixed$psill)
+			theta.fixed[2] <- TRUE
+		}
+		if (!is.null(fixed$range)) {
+			theta[3] <- -log(fixed$range)
+			theta.fixed[3] <- TRUE
+		}
 	} else if (cov == "matern") {
-		R <- 3
+		R <- 4
+
+		theta <- rep(0, R)
+		theta.fixed <- rep(FALSE, R)
+
+		if (!is.null(fixed$nugget)) {
+			theta[1] <- log(fixed$nugget)
+			theta.fixed[1] <- TRUE
+		}
+		if (!is.null(fixed$psill)) {
+			theta[2] <- log(fixed$psill)
+			theta.fixed[2] <- TRUE
+		}
+		if (!is.null(fixed$range)) {
+			theta[3] <- -log(fixed$range)
+			theta.fixed[3] <- TRUE
+		}
+		if (!is.null(fixed$smooth)) {
+			theta[4] <- log(fixed$smooth)
+			theta.fixed[4] <- TRUE
+		}
 	} else {
 		stop(paste("Unknown covariance type",cov))
 	}
+
+
+if (0) {
+# TODO: find a smart way to set initial values
+	# initial values
+	# NOTE: theta passed to spacious.fit are unconstrained via log()
+	if (is.null(cov.inits)) {
+		theta <- rep(0, R)
+#theta[1] <- theta[2] <- log(var(y)/2)
+#cat("Starting with:",exp(theta),"\n")
+	} else {
+		theta <- log(cov.inits)
+	}
+}
 
 	# create grid
 	grid <- c()
@@ -109,28 +160,19 @@
 			}
 		}
 	}
+# TODO: warn if too high a % of data is in a single block
 
-# TODO: find a smart way to set these
-	# initial values
-	# NOTE: theta passed to spacious.fit are unconstrained via log()
-	if (is.null(cov.inits)) {
-		theta <- rep(0, R)
-#theta[1] <- theta[2] <- log(var(y)/2)
-#cat("Starting with:",exp(theta),"\n")
-	} else {
-		theta <- log(cov.inits)
-	}
-
-# TODO: move computation of D to spacious.fit()
+# TODO: move computation of D (if needed) to spacious.fit()
 	t1 <- proc.time()
-	fit <- spacious.fit(y, X, D, nblocks, B, neighbors, cov, n, p, R, theta, nu=smoothness,
+	fit <- spacious.fit(y, X, D, nblocks, B, neighbors, cov, n, p, R, theta, theta.fixed,
 		verbose, tol, maxIter)
 	t <- proc.time()-t1
 
 	# construct output fit
-	fit$time  <- t[3]
+	fit$time  <- t
 	fit$beta  <- as.vector(fit$beta)
 	fit$theta <- as.vector(fit$theta)
+	fit$theta.fixed <- theta.fixed
 
 	fit$y         <- y
 	fit$S         <- S
@@ -140,7 +182,6 @@
 	fit$grid      <- grid
 	fit$neighbors <- neighbors
 	fit$cov       <- cov
-	fit$nu        <- smoothness
 
 	fit$terms  <- attr(mf, "terms")
 	fit$fitted <- X %*% fit$beta
