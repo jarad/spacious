@@ -11,6 +11,8 @@ initial.theta = function(y, S, p.nugget=0.2, p.range=0.1) {
   d = dist(S[points,])
   range = quantile(d,p.range)
   
-  return(c(sill,nugget,partial.sill,range))
+  smoothness = 0.5
+
+  return(c(nugget, partial.sill, range, smoothness))
 }
 

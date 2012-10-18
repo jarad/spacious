@@ -9,20 +9,16 @@ p.range = 0.1
 
 init = as.numeric(initial.theta(y,S,p.nugget,p.range))
 
-test_that("sill computed correctly",{
-  expect_equal(init[1], vy)
-})
 
 test_that("nugget computed correctly",{
-  expect_equal(init[2], p.nugget*vy)
+  expect_equal(init[1], p.nugget*vy)
 })
 
 test_that("partial.sill computed correctly",{
-  expect_equal(init[3], (1-p.nugget)*vy)
-  expect_equal(init[3], init[1]-init[2])
+  expect_equal(init[2], (1-p.nugget)*vy)
 })
 
 test_that("range computed correctly",{
-  expect_equal(init[4], 0.613532)
+  expect_equal(init[3], 0.613532)
 })
 
