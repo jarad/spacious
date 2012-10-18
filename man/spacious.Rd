@@ -23,6 +23,12 @@
 \seealso{
 }
 \examples{
-
+  n = 100
+  S = matrix(runif(n*2), n, 2)
+  D = rdist(S); diag(D) = 0
+  Sigma = 0.5 * diag(n) + 0.5*exp(-1.5*D)
+  y = mvrnorm(1, rep(mu,n), Sigma)
+  fit = spacious(y~1, S=S)
+  summary(fit)
 }
 \keyword{spacious}
