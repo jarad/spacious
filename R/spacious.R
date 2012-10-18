@@ -39,6 +39,14 @@
 	R <- NA    # number of covariance parameters
 	theta <- c()
 	theta.fixed <- c()
+
+	# handle covariance types
+
+# TODO: I suggest you use pmatch, e.g.
+# cov = pmatch(cov, c("a","b","exp"))
+# if (cov != 3) stop("Unknown covariance function")
+# then replace R below with cov
+
 	if (cov == "exp") {
 		R <- 3
 

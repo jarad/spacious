@@ -8,7 +8,6 @@ if ("package:spacious" %in% search()) {
 # load the package
 require(spacious)
 
-require(geoR)
 set.seed(311)
 
 # generate data to use for fitting a block composite model
@@ -60,6 +59,9 @@ print(y[(n+1):(n+np)])
 
 if (0) {
 # try likfit
+
+require(geoR) # for likfit
+
 gd <- as.geodata(cbind(S[1:n,],y[1:n]))
 time.likfit <- proc.time()
 fit.likfit <- likfit(gd, ini.cov.pars=c(1.22,1.22))
