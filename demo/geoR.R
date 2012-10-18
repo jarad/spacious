@@ -1,9 +1,9 @@
 
 require(geoR)
-set.seed(311)
+set.seed(311) # TODO: should we keep this seed set?
 
 # generate data to use for fitting a block composite model
-n <- 250
+n  <- 250
 np <- 5   # number to predict
 
 # generate spatial locations S
@@ -14,48 +14,42 @@ D <- rdist(S); D[row(D)==col(D)] <- 0
 
 # matern covariance function parameters
 nugget <- 0.5
-tau2 <- 0.5
-range <- 1.5
+tau2   <- 0.5
+range  <- 1.5
 smooth <- 0.50  # 0.5 = exponential cov
-mu <- 5
-#Sigma <- nugget * diag(n) + tau2 * matern(D, range, smooth)
-Sigma <- nugget * diag(n+np) + tau2 * exp(-range * D)
+mu     <- 5
+Sigma  <- nugget * diag(n+np) + tau2 * exp(-range * D)
 
 # generate data
 y <- mvrnorm(1, mu=rep(mu, n+np), Sigma=Sigma)
+x <- rnorm(n+np)
 
+# Exponential covariance function
 # fit with spacious
-X <- matrix(1, nrow=length(y), ncol=1)
-x1 <- rnorm(n+np)
-time.spacious <- proc.time()
-fit.spacious <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="exp", nblocks=2^2, verbose=TRUE)
-time.spacious <- proc.time() - time.spacious
-beta.spacious <- fit.spacious$beta
-theta.spacious <- fit.spacious$theta
+sd <- data.frame(y=y[1:n], x=x[1:n])
+time.spacious <- system.time(
+                 fit.spacious <- spacious(y~x, sd, S=S[1:n,], cov="exp", nblocks=2^2))
 
-print(summary(fit.spacious))
+# fit with geoR
+gd <- as.geodata(cbind(S[1:n,],y[1:n])) # TODO: where is the explanatory variable?
+time.likfit <- system.time(fit.likfit <- likfit(gd, ini.cov.pars=c(0.5,2)))
 
-cat("Spacious estimates:",beta.spacious,theta.spacious,"\n")
-cat("Spacious SEs:",fit.spacious$se.beta,fit.spacious$se.theta,"\n")
-cat("Spacious execution time:\n")
-print(time.spacious)
 
-preds <- predict(fit.spacious, newdata=data.frame(x2=x1[(n+1):(n+np)]), newS=S[(n+1):(n+np),], interval="prediction", level=0.9)
-cat("Predictions:\n")
-print(preds)
-cat("Actual:\n")
-print(y[(n+1):(n+np)])
+# Comparison
+comp = data.frame(spacious=c(time.spacious[3], fit.spacious$beta[-2], fit.spacious$theta),
+                  likfit  =c(time.likfit[3], fit.likfit$beta, fit.likfit$tausq, fit.likfit$sigmasq, 1/fit.likfit$phi))
+rownames(comp) = c("time","beta","nugget","partial sill","range")
 
-# try likfit
-gd <- as.geodata(cbind(S[1:n,],y[1:n]))
-time.likfit <- proc.time()
-fit.likfit <- likfit(gd, ini.cov.pars=c(0.5,2))
-time.likfit <- proc.time() - time.likfit
+cat("\nComparison of spacious with geoR::likfit\n")
+print(comp)
 
-beta.likfit <- fit.likfit$beta
-theta.likfit <- c(fit.likfit$tausq, fit.likfit$sigmasq, 1/fit.likfit$phi)
 
-cat("likfit estimates:",beta.likfit,theta.likfit,"\n")
-cat("likfit execution time:\n")
-print(time.likfit)
+
+# TODO: what else should we be comparing? standard errors?
+
+#preds <- predict(fit.spacious, newdata=data.frame(x2=x1[(n+1):(n+np)]), newS=S[(n+1):(n+np),], interval="prediction", level=0.9)
+#cat("Predictions:\n")
+#print(preds)
+#cat("Actual:\n")
+#print(y[(n+1):(n+np)])
 
