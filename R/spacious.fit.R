@@ -35,6 +35,12 @@
 	# with respect to each covariance function param
 	partials <- list()
 
+	# transformation functions
+	invlogit <- function(x) { 1/(1+exp(-x)) }
+	#tsmooth <- function(x) { 0.5 + 3.5*invlogit(x) }
+	tsmooth <- function(x) { exp(x) }
+	t_theta <- function(x) { x }
+
 	# setup fit based on covariance function
 	if (cov == "exp") {
 		partials <- list(
@@ -48,25 +54,35 @@
 				-exp(theta[2]+theta[3]) * D[in.pair,in.pair] * exp(-exp(theta[3]) * D[in.pair,in.pair])
 			}
 		)
+		t_theta <- function(theta) { exp(theta) }
 	} else if (cov == "matern") {
 		partials <- list(
 			function(theta, n.pair, in.pair) {
 				exp(theta[1])*diag(n.pair)
 			},
 			function(theta, n.pair, in.pair) {
-				mid <- 2*D[in.pair,in.pair]*exp(theta[3])*sqrt(theta[4])
-				rho <- mid^theta[4] * besselK(mid, theta[4])/(2^(theta[4]-1) * gamma(theta[4]))
+				theta4 <- tsmooth(theta[4])
+				mid <- 2*D[in.pair,in.pair]*exp(theta[3])*sqrt(theta4)
+				rho <- mid^theta4 * besselK(mid, theta4)/(2^(theta4-1) * gamma(theta4))
 				rho[is.na(rho)] <- 1
 				exp(theta[2])*rho
 			},
 			function(theta, n.pair, in.pair) {
-				mid <- 2*D[in.pair,in.pair]*exp(theta[3])*sqrt(theta[4])
-				rho <- -mid^(theta[4]+1)*besselK(mid, theta[4]-1)/(2^(theta[4]-1) * gamma(theta[4]))
-				#rho <- ( theta[4] * mid^theta[4] * besselK(mid, theta[4]) - 0.5 * mid^(theta[4]+1) * ( besselK(mid, theta[4]-1) + besselK(mid, theta[4]+1) ) )/(2^(theta[4]-1)*gamma(theta[4]))
+				theta4 <- tsmooth(theta[4])
+				mid <- 2*D[in.pair,in.pair]*exp(theta[3])*sqrt(theta4)
+				rho <- -mid^(theta4+1)*besselK(mid, theta4-1)/(2^(theta4-1) * gamma(theta4))
 				rho[is.na(rho)] <- 0
 				exp(theta[2])*rho
+			},
+			function(theta, n.pair, in.pair) {
+				e <- 1e-5
+				p <- ( matern_rho( c(exp(theta[1:3]),tsmooth(theta[4]+e)), D[in.pair,in.pair] ) -
+					matern_rho( c(exp(theta[1:3]),tsmooth(theta[4]-e)), D[in.pair,in.pair] ) )/(2*e)
+
+				exp(theta[2]) * p
 			}
 		)
+		t_theta <- function(theta) { c(exp(theta[1:3]),tsmooth(theta[4])) }
 	} else {
 		stop(paste("Unknown covariance type",cov))
 	}
@@ -84,7 +100,7 @@
 			in.pair <- B==row[1] | B==row[2]
 			n.pair <- sum(in.pair)
 
-			Sigma <- compute_cov(cov, exp(theta), D[in.pair,in.pair])
+			Sigma <- compute_cov(cov, t_theta(theta), D[in.pair,in.pair])
 			invSigma <- chol2inv(chol(Sigma))
 			A <<- A + t(X[in.pair,]) %*% invSigma %*% X[in.pair,]
 			b <<- b + t(X[in.pair,]) %*% invSigma %*% y[in.pair]
@@ -113,7 +129,7 @@
 			n.pair <- sum(in.pair)
 
 # TODO: figure out if it is posible to do this once since it's done in beta update as well (maybe merge stuff?)
-			Sigma <- compute_cov(cov, exp(theta), D[in.pair,in.pair])
+			Sigma <- compute_cov(cov, t_theta(theta), D[in.pair,in.pair])
 			invSigma <- chol2inv(chol(Sigma))
 
 # TODO: see if any of this can be cleaned up
@@ -158,6 +174,9 @@
 #		invFI <- chol2inv(chol(FI))
 #		invFI <- qr.solve(qr(FI))
 
+#print(t_theta(theta))
+#print( FI[which.not_fixed,which.not_fixed] )
+
 		theta[which.not_fixed] <- theta[which.not_fixed] +
 			chol2inv(chol(FI[which.not_fixed,which.not_fixed])) %*% u[which.not_fixed]
 
@@ -181,7 +200,7 @@
 		beta <- update_beta(theta)
 
 		if (verbose) {
-			cat("iter",iter,":"); print( c(beta, exp(theta)) )
+			cat("iter",iter,":"); print( c(beta, t_theta(theta)) )
 		}
 
 		if (iter > 1) {
@@ -225,7 +244,7 @@
 		# which sites are in block i?
 		in.i       <- which(B==neighbors[i,1] | B==neighbors[i,2])
 		n.i        <- length(in.i)
-		Sigma.i    <- compute_cov(cov, exp(theta), D[in.i,in.i])
+		Sigma.i    <- compute_cov(cov, t_theta(theta), D[in.i,in.i])
 		invSigma.i <- chol2inv(chol(Sigma.i))
 
 		for (j in 1:nrow(neighbors)) {
@@ -243,10 +262,10 @@
 			# which sites are in block j?
 			in.j       <- which(B==neighbors[j,1] | B==neighbors[j,2])
 			n.j        <- length(in.j)
-			Sigma.j    <- compute_cov(cov, exp(theta), D[in.j,in.j])
+			Sigma.j    <- compute_cov(cov, t_theta(theta), D[in.j,in.j])
 			invSigma.j <- chol2inv(chol(Sigma.j))
 
-			Sigma.ij <- compute_cov(cov, exp(theta), D[c(in.i,in.j),c(in.i,in.j)])
+			Sigma.ij <- compute_cov(cov, t_theta(theta), D[c(in.i,in.j),c(in.i,in.j)])
 
 			J.beta <- J.beta + t(X[in.i,]) %*% invSigma.i %*% Sigma.ij[1:n.i,n.i+1:n.j] %*% invSigma.j %*% X[in.j,]
 
@@ -279,10 +298,10 @@
 
 	# get the standard errors
 	se.beta  <- sqrt(diag(vcov.beta))
-	se.theta <- as.vector(sqrt(diag(vcov.theta)) * exp(theta))
+	se.theta <- as.vector(sqrt(diag(vcov.theta)) * t_theta(theta))
 
 	# return estimates and standard errors
-	list(beta=beta, theta=exp(theta),
+	list(beta=beta, theta=t_theta(theta),
 		se.beta=se.beta, se.theta=se.theta,
 		vcov.beta=vcov.beta, vcov.theta=vcov.theta,
 		convergence=convergence,
