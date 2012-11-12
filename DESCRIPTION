@@ -1,11 +1,10 @@
 Package: spacious
 Depends: MASS, fields, geoR, sp, spdep
-Suggests: testthat
 Type: Package
 Title: Block composite spatial analysis.
 Version: 0.1
-Date: 2012-07-30
-Author: Ryan J. Parker and Jarad Niemi
+Date: 2012-11-12
+Author: Ryan J. Parker, Jarad B. Niemi, and Brian J. Reich
 Maintainer: Ryan J. Parker <rjparker@ncsu.edu>
 Description: Fits block composite geostatistical spatial models.
 License: GPL
