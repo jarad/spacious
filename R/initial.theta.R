@@ -15,4 +15,3 @@ initial.theta = function(y, S, p.nugget=0.2, p.range=0.1) {
 
   return(c(nugget, partial.sill, range, smoothness))
 }
-
