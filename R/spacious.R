@@ -3,8 +3,8 @@
 	formula, data, S=NULL,                  # input data
 	cov="exp", cov.inits=NULL,              # covariance function
 	B=NULL, neighbors=NULL, D=NULL,
-	fixed=list(smoothness=0.5),             # fixed parameters
-	nblocks=1, grid.type="regular",         # blocking style
+	fixed=NULL,                             # fixed parameters
+	blocks=list(type="cluster",nblocks=4),  # blocking style
 	verbose=FALSE, tol=1e-3, maxIter=100    # algorithm control params
 ) {
 # TODO: error check inputs
@@ -41,11 +41,6 @@
 	theta.fixed <- c()
 
 	# handle covariance types
-
-# TODO: I suggest you use pmatch, e.g.
-# cov = pmatch(cov, c("a","b","exp"))
-# if (cov != 3) stop("Unknown covariance function")
-# then replace R below with cov
 
 	if (cov == "exp") {
 		R <- 3
@@ -86,46 +81,64 @@
 		if (!is.null(fixed$smooth)) {
 			theta[4] <- log(fixed$smooth)
 			theta.fixed[4] <- TRUE
+		} else {
+			stop("Smoothness must be fixed")
 		}
 	} else {
 		stop(paste("Unknown covariance type",cov))
 	}
 
-
-if (0) {
-# TODO: find a smart way to set initial values
-	# initial values
-	# NOTE: theta passed to spacious.fit are unconstrained via log()
-	if (is.null(cov.inits)) {
-		theta <- rep(0, R)
-#theta[1] <- theta[2] <- log(var(y)/2)
-#cat("Starting with:",exp(theta),"\n")
-	} else {
-		theta <- log(cov.inits)
+	if (sum(!theta.fixed) > 0) {
+		# compute some initial values
+		which.inits <- which(theta.fixed[1:3] == FALSE)
+		if (length(which.inits) > 0) {
+			theta[which.inits] <- log( (initial.theta(y, S))[which.inits] )
+		}
 	}
-}
+
+	if (!is.null(cov.inits)) {
+		# set initial values from user
+		if (!is.null(cov.inits$nugget)) {
+			theta[1] <- log(cov.inits$nugget)
+		}
+		if (!is.null(cov.inits$psill)) {
+			theta[2] <- log(cov.inits$psill)
+		}
+		if (!is.null(cov.inits$range)) {
+			theta[3] <- -log(cov.inits$range)
+		}
+	}
+
+	if (verbose) {
+		cat("Initial values for theta:",exp(theta),"\n")
+	}
 
 	# create grid
 	grid <- c()
 	if (!is.null(B) && !is.null(neighbors)) {
 		# we have block memberships and neighbors, so don't do anything else
-	} else if (nblocks == "pair") {
+	} else if (is.null(blocks)) {
+		B <- rep(1,n)
+		neighbors <- matrix( c(1, 1), nrow=1 )
+	} else if (blocks$type == "cluster") {
+		bc <- blocks.cluster(S, blocks$nblocks)
+		B <- bc$B
+		grid <- bc$grid
+		neighbors <- bc$neighbors
+	} else if (blocks$type == "pair") {
 		# pairwise likelihood
 		B <- 1:n
 		neighbors <- do.call("rbind", sapply(1:(n-1), function(i) {
 			cbind(i,(i+1):n)
 		}))
-	} else if (nblocks <= 1) {
-		B <- rep(1,n)
-		neighbors <- matrix( c(1, 1), nrow=1 )
-	} else if (grid.type=="regular") {
+	} else if (blocks$type=="regular") {
 		B <- rep(NA, n)   # vector to hold block memberships
 		neighbors <- c()
-		snb <- sqrt(nblocks)
+		snb <- sqrt(blocks$nblocks)
 
-		# ensure that nblocks is an integer squared
+		# ensure that blocks$nblocks is an integer squared
 		if (snb != round(snb)) {
-			stop("Number of blocks (nblocks) must be an integer squared")
+			stop("Number of blocks (blocks$nblocks) must be an integer squared")
 		}
 
 		# construct a bounding square
@@ -172,7 +185,7 @@ if (0) {
 
 # TODO: move computation of D (if needed) to spacious.fit()
 	t1 <- proc.time()
-	fit <- spacious.fit(y, X, D, nblocks, B, neighbors, cov, n, p, R, theta, theta.fixed,
+	fit <- spacious.fit(y, X, D, blocks$nblocks, B, neighbors, cov, n, p, R, theta, theta.fixed,
 		verbose, tol, maxIter)
 	t <- proc.time()-t1
 
@@ -185,7 +198,7 @@ if (0) {
 	fit$y         <- y
 	fit$S         <- S
 	fit$D         <- D
-	fit$nblocks   <- nblocks
+	fit$nblocks   <- blocks$nblocks
 	fit$B         <- B
 	fit$grid      <- grid
 	fit$neighbors <- neighbors
