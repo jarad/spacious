@@ -12,7 +12,7 @@ require(geoR)
 set.seed(311)
 
 # generate data to use for fitting a block composite model
-n <- 250
+n <- 100
 np <- 5   # number to predict
 
 # generate spatial locations S
@@ -24,11 +24,11 @@ D <- rdist(S); D[row(D)==col(D)] <- 0
 # matern covariance function parameters
 nugget <- 0.5
 tau2 <- 0.5
-range <- 1.5
-smooth <- 1.50  # 0.5 = exponential cov
+range <- 0.25
+smooth <- 3.50  # 0.5 = exponential cov
 mu <- 5
-Sigma <- nugget * diag(n+np) + tau2 * matern(D, 1/range, smooth)
-#Sigma <- nugget * diag(n+np) + tau2 * exp(-range * D)
+Sigma <- nugget * diag(n+np) + tau2 * matern(D, range, smooth)
+#Sigma <- nugget * diag(n+np) + tau2 * exp(-D/range)
 
 if (0) {
 nu <- smooth
@@ -47,7 +47,9 @@ X <- matrix(1, nrow=length(y), ncol=1)
 x1 <- rnorm(n+np)
 time.spacious <- proc.time()
 #fit.spacious <- spacious(y, X, S, cov="exp", nblocks=1^2)
-fit.spacious <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="matern", smoothness=smooth, nblocks=2^2, verbose=TRUE)
+#fit.spacious <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="matern", smoothness=smooth, nblocks=2^2, verbose=TRUE)
+fit.spacious <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="matern", fixed=list(smoothness=smooth), nblocks=2^2, verbose=TRUE)
+#fit.spacious <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="matern", fixed=NULL, nblocks=2^2, verbose=TRUE)
 time.spacious <- proc.time() - time.spacious
 beta.spacious <- fit.spacious$beta
 theta.spacious <- fit.spacious$theta
