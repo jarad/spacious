@@ -13,6 +13,11 @@
 
 	grid <- c()
 	for (b in 1:nblocks) {
+		if (length(which(ks==b)) == 0) {
+			# skip this cluster
+			next;
+		}
+
 		bpts <- sp[which(ks==b),]
 		hull <- chull(bpts)
 		poly <- rbind(bpts[hull,], bpts[hull[1],])
