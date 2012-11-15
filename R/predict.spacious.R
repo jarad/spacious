@@ -13,9 +13,13 @@
 	nNew <- nrow(newS)
 
 	# build model matrix for the new data
-	terms <- delete.response(terms(object))
-	mf <- model.frame(terms, newdata)
-	X <- model.matrix(terms, mf)
+	if (is.null(newdata)) {
+		X <- rep(1, nNew)
+	} else {
+		terms <- delete.response(terms(object))
+		mf <- model.frame(terms, newdata)
+		X <- model.matrix(terms, mf)
+	}
 
 	# locations for all points
 	S <- rbind(object$S, newS)
@@ -59,7 +63,7 @@
 
 		if (is.null(grid)) {
 			# we don't have polygons, so find the closest point and use that block
-			warning("No polygons defining blocks. Using the closest point to find a block.")
+			stop("No polygons defining blocks. Using the closest point to find a block.")
 # TODO: do this
 		} else {
 			for (b in 1:nB) {
@@ -71,7 +75,7 @@
 			}
 
 			if (sum(is.na(newB))) {
-				warning("Unable to find blocks for all prediction sites. Using closest point(s) to find block(s).")
+				stop("Unable to find blocks for all prediction sites. Using closest point(s) to find block(s).")
 # TODO: do this
 			}
 
