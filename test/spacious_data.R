@@ -10,10 +10,11 @@ require(spacious)
 
 data(mean_max_temps)
 
-fit.full <- spacious(temp~1, data=mean_max_temps, S=cbind(mean_max_temps$lat,mean_max_temps$long), blocks=NULL, verbose=TRUE)
-fit.clus <- spacious(temp~1, data=mean_max_temps, S=cbind(mean_max_temps$lat,mean_max_temps$long), blocks=list(type="cluster", nblocks=25), verbose=TRUE)
+#fit.full <- spacious(temp~1, data=mean_max_temps, S=cbind(mean_max_temps$lat,mean_max_temps$long), blocks=NULL, verbose=TRUE)
+fit.clus <- spacious(temp~1, data=mean_max_temps, S=cbind(mean_max_temps$lat,mean_max_temps$long), blocks=list(type="cluster", nblocks=250), verbose=TRUE)
+#fit.re <- spacious(temp~1, data=mean_max_temps, S=cbind(mean_max_temps$lat,mean_max_temps$long), blocks=list(type="regular", nblocks=100), verbose=TRUE)
 #fit <- spacious(temp~1, data=mean_max_temps, S=cbind(mean_max_temps$lat,mean_max_temps$long), nblocks=9, verbose=TRUE)
 
-print(summary(fit.full))
-print(summary(fit.clus))
+#print(summary(fit.full))
+#print(summary(fit.clus))
 
