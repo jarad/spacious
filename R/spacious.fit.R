@@ -183,11 +183,34 @@
 		theta
 	}
 
+	# compute log likelihood
+	"loglik" <- function(beta, theta) {
+		ll <- sum( apply(neighbors, 1, function(row) {
+			in.pair <- B==row[1] | B==row[2]
+			n.pair <- sum(in.pair)
+
+			Sigma <- compute_cov(cov, t_theta(theta), D[in.pair,in.pair])
+			cholSigma <- chol(Sigma)
+			invSigma <- chol2inv(cholSigma)
+
+			Xb <- X[in.pair,] %*% beta
+			ymXb <- y[in.pair]-Xb
+
+			-sum(log(diag(cholSigma))) -0.5 * t(ymXb) %*% invSigma %*% ymXb
+		}) )
+	}
+
 # TODO: allow user to set control parameters
 	# estimate params
 
 	# get initial beta from initial theta
 	beta <- update_beta(theta)
+
+	ll <- -2 * loglik(beta,theta)
+
+	# save theta and log lik at each iteration
+	iters.theta <- t_theta(theta)
+	iters.ll    <- ll
 
 	for (iter in 1:maxIter) {
 		prev.beta <- beta
@@ -199,8 +222,15 @@
 		# update beta
 		beta <- update_beta(theta)
 
+		# get -2 * log likelihood
+		ll <- -2 * loglik(beta, theta)
+
+		# save values at each iteration
+		iters.theta <- rbind( iters.theta, t_theta(theta) )
+		iters.ll    <- c( iters.ll, ll )
+
 		if (verbose) {
-			cat("iter",iter,":"); print( c(beta, t_theta(theta)) )
+			cat("iter",iter,":"); print( c(beta, t_theta(theta), ll) )
 		}
 
 		if (iter > 1) {
@@ -296,15 +326,23 @@
 		}
 	}
 
+	# transform theta
+	theta <- t_theta(theta)
+
 	# get the standard errors
 	se.beta  <- sqrt(diag(vcov.beta))
-	se.theta <- as.vector(sqrt(diag(vcov.theta)) * t_theta(theta))
+	se.theta <- as.vector(sqrt(diag(vcov.theta)) * theta)
+
+	# transform theta[3] to range form
+	theta[3]        <- 1/theta[3]
+	se.theta[3]     <- se.theta[3] * theta[3]^2
+	iters.theta[,3] <- 1/iters.theta[,3]
 
 	# return estimates and standard errors
-	list(beta=beta, theta=t_theta(theta),
+	list(
+		convergence=convergence, nIter=iter, iters.theta=iters.theta, iters.ll=iters.ll,
+		beta=beta, theta=theta, ll=ll,
 		se.beta=se.beta, se.theta=se.theta,
-		vcov.beta=vcov.beta, vcov.theta=vcov.theta,
-		convergence=convergence,
-		nIter=iter
+		vcov.beta=vcov.beta, vcov.theta=vcov.theta
 	)
 }
