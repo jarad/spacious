@@ -1,6 +1,6 @@
 # Computes initial values for matern covariance matrix
 
-initial.theta = function(y, S, p.nugget=0.2, p.range=0.1) {
+initial.theta = function(y, S, p.nugget=0.1, p.range=0.1) {
   sill = var(y)              # 
   nugget = p.nugget*sill
   partial.sill = sill-nugget
@@ -13,5 +13,5 @@ initial.theta = function(y, S, p.nugget=0.2, p.range=0.1) {
   
   smoothness = 0.5
 
-  return(c(nugget, partial.sill, range, smoothness))
+  return(c(nugget, partial.sill, 1/range, smoothness))
 }
