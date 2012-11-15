@@ -154,6 +154,9 @@
 				poly.x <- round(c(i,i+spacing,i+spacing,i,i), 4)
 				poly.y <- round(c(j,j,j+spacing,j+spacing,j), 4)
 				in_poly <- point.in.polygon(S[,1], S[,2], poly.x, poly.y) >= 1
+
+				if (sum(in_poly) == 0) { next; }
+
 				B[in_poly] <- b
 
 				# save grid
