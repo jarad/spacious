@@ -205,6 +205,15 @@
 
 	# get initial beta from initial theta
 	beta <- update_beta(theta)
+	Nbeta <- length(beta)
+	Ntheta <- length(theta)
+
+	names.show <- c("beta")
+	if (Nbeta > 1) {
+		names.show <- c(names.show, rep("", Nbeta-1))
+	}
+	names.show <- c(names.show, "theta", rep("", Ntheta-1))
+	names.show <- c(names.show, "log lik")
 
 	ll <- -2 * loglik(beta,theta)
 
@@ -230,7 +239,10 @@
 		iters.ll    <- c( iters.ll, ll )
 
 		if (verbose) {
-			cat("iter",iter,":"); print( c(beta, t_theta(theta), ll) )
+			show <- c(beta, t_theta(theta), ll)
+			names(show) <- names.show
+			cat("iter ",iter,":\n",sep="")
+			print( show )
 		}
 
 		if (iter > 1) {
