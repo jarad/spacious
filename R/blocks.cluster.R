@@ -6,7 +6,7 @@
 	r.x <- c(floor(min(S[,1])),ceiling(max(S[,1])))
 	r.y <- c(floor(min(S[,2])),ceiling(max(S[,2])))
 
-	scale <- 100
+	scale <- 100 #max(100,nblocks)
 	sp  <- expand.grid(seq(r.x[1],r.x[2],length=scale), seq(r.y[1],r.y[2],length=scale))
 	ddd <- rdist(sp, km$centers)
 	ks  <- apply(ddd, 1, which.min)
@@ -14,17 +14,36 @@
 	grid <- c()
 	for (b in 1:nblocks) {
 		if (length(which(ks==b)) == 0) {
-			# skip this cluster
+			# no points in grid for this block; use actual points for polygon
+			bpts <- matrix(S[which(km$cluster==b),], nrow=sum(km$cluster==b), ncol=2)
+			hull <- chull(bpts)
+if (nrow(bpts) == 1) {
+cat("bpts:\n");print(bpts)
+cat("poly:\n");print(poly)
+cat("hull:\n");print(hull)
+print(bpts[hull,])
+}
+			poly <- rbind(bpts[hull,], bpts[hull[1],])
+
+			grid <- c(grid,list(Polygons(list(Polygon(cbind(
+				poly[,1],poly[,2]
+			))),paste(b)) ))
+
+#			# skip this cluster
+#			if (sum(km$cluster==b) > 0) {
+#				warning(paste0("Unable to create polygon for non-empty cluster ",b,"; skipping ",sum(km$cluster==b)," observations\n"))
+#			}
 			next;
+		} else {
+			# use points from grid for polygon
+			bpts <- sp[which(ks==b),]
+			hull <- chull(bpts)
+			poly <- rbind(bpts[hull,], bpts[hull[1],])
+
+			grid <- c(grid,list(Polygons(list(Polygon(cbind(
+				poly[,1],poly[,2]
+			))),paste(b)) ))
 		}
-
-		bpts <- sp[which(ks==b),]
-		hull <- chull(bpts)
-		poly <- rbind(bpts[hull,], bpts[hull[1],])
-
-		grid <- c(grid,list(Polygons(list(Polygon(cbind(
-          poly[,1],poly[,2]
-        ))),paste(b)) ))
 	}
 	grid <- SpatialPolygons(grid)
 
