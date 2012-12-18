@@ -35,10 +35,28 @@ y <- mvrnorm(1, mu=rep(mu, n+np), Sigma=Sigma)
 # fit with spacious
 X <- matrix(1, nrow=length(y), ncol=1)
 x1 <- rnorm(n+np)
+
+y.fit <- y[1:n]
+y.pred <- y[n+1:np]
+X.fit <- matrix(x1[1:n], nrow=n, ncol=1)
+X.pred <- matrix(x1[n+1:np], nrow=np, ncol=1)
+S.fit <- S[1:n,]
+S.pred <- S[n+1:np,]
+
+if (FALSE) { # test with lm()
+	fit <- lm(y.fit~X.fit)
+	preds <- predict(fit, newdata=as.data.frame(X.pred))
+print(fit)
+print(preds)
+done
+}
+
 time.spacious <- proc.time()
 #fit.spacious <- spacious(y, X, S, cov="exp", nblocks=1^2)
 #fit.spacious <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="exp", nblocks=2^2, verbose=TRUE)
-fit.spacious <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="exp", blocks=list(type="regular", nblocks=2^2), verbose=TRUE)
+#fit.spacious <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="exp", blocks=list(type="regular", nblocks=2^2), verbose=TRUE)
+fit.spacious <- spacious(y~1, data=data.frame(y=y[1:n]), S=S[1:n,], cov="exp", blocks=list(type="regular", nblocks=2^2), verbose=TRUE)
+#fit.spacious <- spacious(y.fit~X.fit, S=S.fit, cov="exp", blocks=list(type="regular", nblocks=2^2), verbose=TRUE)
 time.spacious <- proc.time() - time.spacious
 beta.spacious <- fit.spacious$beta
 theta.spacious <- fit.spacious$theta
@@ -50,11 +68,20 @@ cat("Spacious SEs:",fit.spacious$se.beta,fit.spacious$se.theta,"\n")
 cat("Spacious execution time:\n")
 print(time.spacious)
 
-preds <- predict(fit.spacious, newdata=data.frame(x2=x1[(n+1):(n+np)]), newS=S[(n+1):(n+np),], interval="prediction", level=0.9)
+#preds <- predict(fit.spacious, newdata=data.frame(x2=x1[(n+1):(n+np)]), newS=S[(n+1):(n+np),], interval="prediction", level=0.9)
+preds <- predict(fit.spacious, newS=S[(n+1):(n+np),], interval="prediction", level=0.9)
+#preds <- predict(fit.spacious, newdata=X.pred, newS=S.pred, interval="prediction", level=0.9)
 cat("Predictions:\n")
 print(preds)
 cat("Actual:\n")
-print(y[(n+1):(n+np)])
+print(y.pred)
+
+done
+
+
+# predict at a far out location
+preds <- predict(fit.spacious, newdata=data.frame(x2=0), newS=matrix(rbind( c(10,10), c(-5, -5) ),nrow=2,ncol=2), interval="prediction", level=0.9)
+print(preds)
 
 # consider using the rbenchmark package
 
