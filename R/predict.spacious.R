@@ -1,6 +1,10 @@
 # predict values at new sites using fit from spacious block composite model
-"predict.spacious" <- function(object, newdata=NULL, newS=NULL, newB=NULL, D=NULL,
+"predict.spacious" <- function(object, newdata, newS, newB, D,
 	interval = "none", level = 0.95, ...) {
+
+	if (missing(newS)) {
+		stop("Must specify locations newS to make predictions at.")
+	}
 
 	# ensure this is a matrix
 	newS <- matrix(newS, ncol=2)
@@ -11,7 +15,7 @@
 	nNew <- nrow(newS)
 
 	# build model matrix for the new data
-	if (is.null(newdata)) {
+	if (missing(newdata)) {
 		if (length(object$beta) > 1) {
 			# newdata missing, yet we have covariates...
 			stop("newdata must be specified for this fit.")
@@ -35,7 +39,7 @@
 	# locations for all points
 	S <- rbind(object$S, newS)
 
-	if (is.null(D)) {
+	if (missing(D)) {
 		# compute distance matrix
 		D <- rdist(S)
 		D[row(D)==col(D)] <- 0
@@ -50,7 +54,7 @@
 	}
 
 	# figure out newB the location is in
-	if (nB == 0 && is.null(newB)) {  # no blocks
+	if (nB == 0 && missing(newB)) {  # no blocks
 		# perform traditional kriging
 		n <- nrow(S)
 
@@ -69,8 +73,8 @@
 	} else {
 		# predict when we have blocks
 
-		if (!is.null(newB)) {
-			# make sure we have these blocks defined in the nieghbors
+		if (!missing(newB)) {
+			# make sure we have these blocks defined in the neighbors
 			uniqueBlocks <- unique( as.vector( object$neighbors ) )
 			sapply(newB, function(b) {
 				if (sum(uniqueBlocks == b) == 0) {
@@ -80,7 +84,7 @@
 		} else {
 			# user did not define blocks, so find some
 
-			if (is.null(grid)) {
+			if (is.null(object$grid)) {
 				# we don't have polygons, so find the closest point and use that block
 				stop("No polygons defining blocks. Specify newB to make predictions.")
 			}
