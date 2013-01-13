@@ -38,7 +38,7 @@
 	invlogit <- function(x) { 1/(1+exp(-x)) }
 	#tsmooth <- function(x) { 0.5 + 3.5*invlogit(x) }
 	tsmooth <- function(x) { exp(x) }
-	t_theta <- function(x) { x }
+	t_theta <- function(theta) { theta }
 
 	# setup fit based on covariance function
 	if (cov == "exp") {
