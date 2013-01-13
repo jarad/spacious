@@ -1,14 +1,14 @@
 # function to fit block composite models
 "spacious" <- function(
-	formula, data, S=NULL,                  # input data
-	cov="exp", cov.inits=NULL,              # covariance function
-	B=NULL, neighbors=NULL, D=NULL,
-	fixed=NULL,                             # fixed parameters
+	formula, data, S,                       # input data
+	cov="exp", cov.inits,                   # covariance function
+	B, neighbors, D,
+	fixed,                                  # fixed parameters
 	blocks=list(type="cluster",nblocks=4),  # blocking style
 	verbose=FALSE, tol=1e-3, maxIter=100    # algorithm control params
 ) {
 
-	if (is.null(S)) {
+	if (missing(S)) {
 		stop("No spatial locations S specified")
 	}
 
@@ -28,7 +28,7 @@
 	n <- nrow(X)
 	p <- ncol(X)
 
-	if (is.null(D)) {
+	if (missing(D)) {
 		# create distance matrix from spatial locations
 		D <- rdist(S)
 		D[row(D)==col(D)] <- 0
@@ -94,7 +94,7 @@
 		}
 	}
 
-	if (!is.null(cov.inits)) {
+	if (!missing(cov.inits)) {
 		# set initial values from user
 		if (!is.null(cov.inits$nugget)) {
 			theta[1] <- log(cov.inits$nugget)
@@ -113,9 +113,9 @@
 
 	# create grid
 	grid <- c()
-	if (!is.null(B) && !is.null(neighbors)) {
+	if (!missing(B) && !missing(neighbors)) {
 		# we have block memberships and neighbors, so don't do anything else
-	} else if (is.null(blocks)) {
+	} else if (missing(blocks)) {
 		B <- rep(1,n)
 		neighbors <- matrix( c(1, 1), nrow=1 )
 	} else if (blocks$type == "cluster") {
