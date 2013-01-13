@@ -1,0 +1,17 @@
+- Error check inputs to predict()
+- Explore ways to improve speed of predict():
+	o In for (b in uB):
+		- Could re-construct algo so that we only invert each matrix once.
+		- Identify overlap of n1 and n2 so that some of these matrix computations might be reduced.
+- Explore ways to improve speed of spacious.fit():
+	o In update_theta():
+		- Figure out if it is possible to compute/invert cov matrices once since it's done in update_beta() as well.
+	o See if there are ways to improve the way we identify convergence of fit.
+	o Look for ways to speed up standard error computations
+- In spacious():
+	o Error check inputs
+	o Warn if too high a % of data is in a single block
+	o Consider moving computation of D (if needed) to spacious.fit()
+- In summary():
+	o Figure out how to make nice tables of results
+
