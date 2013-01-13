@@ -1,5 +1,4 @@
 # function to run algorithm for fitting a block composite model
-
 "spacious.fit" <- function(y, X, D, nblocks, B, neighbors, cov, n, p, R, theta, theta.fixed,
 	verbose, tol=1e-3, maxIter=100) {
 	# y: response
@@ -128,11 +127,9 @@
 			in.pair <- B==row[1] | B==row[2]
 			n.pair <- sum(in.pair)
 
-# TODO: figure out if it is posible to do this once since it's done in beta update as well (maybe merge stuff?)
 			Sigma <- compute_cov(cov, t_theta(theta), D[in.pair,in.pair])
 			invSigma <- chol2inv(chol(Sigma))
 
-# TODO: see if any of this can be cleaned up
 			Xb <- X[in.pair,] %*% beta
 			ymXb <- y[in.pair]-Xb
 			q <- invSigma %*% ymXb
@@ -171,11 +168,6 @@
 				index <<- index+1
 			})
 		})
-#		invFI <- chol2inv(chol(FI))
-#		invFI <- qr.solve(qr(FI))
-
-#print(t_theta(theta))
-#print( FI[which.not_fixed,which.not_fixed] )
 
 		theta[which.not_fixed] <- theta[which.not_fixed] +
 			chol2inv(chol(FI[which.not_fixed,which.not_fixed])) %*% u[which.not_fixed]
@@ -200,7 +192,6 @@
 		}) )
 	}
 
-# TODO: allow user to set control parameters
 	# estimate params
 
 	# get initial beta from initial theta
@@ -246,7 +237,6 @@
 		}
 
 		if (iter > 1) {
-# TODO: figure out the best way to identify convergence
 			# have we converged?
 			max_diff <- 0
 			if (Nnot_fixed > 0) {
@@ -313,7 +303,6 @@
 
 			if (j > i) {
 				# update J.theta
-# TODO: speed this up (maybe)
 				sapply(seq.R, function(r) {
 					sapply(r:R, function(s) {
 						if (!theta.fixed[r] & !theta.fixed[s]) {

@@ -2,8 +2,6 @@
 "predict.spacious" <- function(object, newdata=NULL, newS=NULL, newB=NULL, D=NULL,
 	interval = "none", level = 0.95, ...) {
 
-# TODO: error check inputs
-
 	# ensure this is a matrix
 	newS <- matrix(newS, ncol=2)
 
@@ -129,7 +127,6 @@
 		# unique blocks where we have points to predict
 		uB <- unique(newB)
 
-# TODO: we could re-construct this so that we only invert each matrix once. worth considering if speed more important than memory.
 		for (b in uB) {
 			# neighbors of this block
 			neighbors <- as.vector(object$neighbors[which( rowSums( object$neighbors==b ) == 1 ),])
@@ -155,7 +152,6 @@
 				B_0 <- matrix(0, nrow=n.in.new, ncol=n.in.new+n.in.obs)
 			}
 
-# TODO: identify overlap of n1 and n2 so that some of these matrix computations might be reduced
 			for (n1 in neighbors) {
 				in.n1   <- which(object$B == n1)
 				n.in.n1 <- length(in.n1)

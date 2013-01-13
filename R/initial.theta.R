@@ -1,5 +1,4 @@
 # Computes initial values for matern covariance matrix
-
 initial.theta = function(y, S, p.nugget=0.1, p.range=0.1) {
   sill = var(y)              # 
   nugget = p.nugget*sill

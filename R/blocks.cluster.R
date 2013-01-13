@@ -17,22 +17,12 @@
 			# no points in grid for this block; use actual points for polygon
 			bpts <- matrix(S[which(km$cluster==b),], nrow=sum(km$cluster==b), ncol=2)
 			hull <- chull(bpts)
-if (nrow(bpts) == 1) {
-cat("bpts:\n");print(bpts)
-cat("poly:\n");print(poly)
-cat("hull:\n");print(hull)
-print(bpts[hull,])
-}
 			poly <- rbind(bpts[hull,], bpts[hull[1],])
 
 			grid <- c(grid,list(Polygons(list(Polygon(cbind(
 				poly[,1],poly[,2]
 			))),paste(b)) ))
 
-#			# skip this cluster
-#			if (sum(km$cluster==b) > 0) {
-#				warning(paste0("Unable to create polygon for non-empty cluster ",b,"; skipping ",sum(km$cluster==b)," observations\n"))
-#			}
 			next;
 		} else {
 			# use points from grid for polygon
@@ -60,21 +50,4 @@ print(bpts[hull,])
 	}
 
 	list(B=km$cluster, neighbors=neighbors, grid=grid)
-}
-
-if (0) {
-bc <- blocks.cluster(cbind(mean_max_temps$lat,mean_max_temps$long), 10)
-if (0) {
-print(neighbors)
-#print(dim(sp));print(length(ks));print(sp[which(ks==1),])
-pdf("polys.pdf")
-par(mfrow=c(2,2))
-plot(S,col=km$cluster,xlim=range(sp[,1]),ylim=range(sp[,2]),main="data and cluster ID")
-plot(km$centers,col=1:nblocks,pch=19,cex=2,xlim=range(sp[,1]),ylim=range(sp[,2]),main="cluster centers")
-plot(table(km$cluster),main="Number points in each cluster")
-plot(sp,col=ks,pch=19,main="domain of each cluster")
-	text(km$centers,labels=paste(1:nblocks),col="orange",cex=0.5)
-graphics.off()
-}
-
 }

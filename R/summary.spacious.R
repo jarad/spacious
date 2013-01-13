@@ -1,7 +1,5 @@
 # summarizes fit of block composite model from spacious
 "summary.spacious" <- function(object, ...) {
-# TODO: figure out how to make nice tables of results
-
 	p.beta <- sapply(object$beta/object$se.beta,
 		function(z) {
 			2*( 1-pnorm(abs(z)) )

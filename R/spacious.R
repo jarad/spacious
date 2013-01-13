@@ -7,7 +7,6 @@
 	blocks=list(type="cluster",nblocks=4),  # blocking style
 	verbose=FALSE, tol=1e-3, maxIter=100    # algorithm control params
 ) {
-# TODO: error check inputs
 
 	if (is.null(S)) {
 		stop("No spatial locations S specified")
@@ -41,7 +40,6 @@
 	theta.fixed <- c()
 
 	# handle covariance types
-
 	if (cov == "exp") {
 		R <- 3
 
@@ -168,7 +166,6 @@
 			}
 		}
 		grid <- SpatialPolygons(grid)
-#pdf("grid.pdf");plot(grid);points(S[,1],S[,2],pch='.');graphics.off();
 
 		if (sum(is.na(B)) > 0) {
 			stop("Some points not placed in grid.")
@@ -184,9 +181,8 @@
 			}
 		}
 	}
-# TODO: warn if too high a % of data is in a single block
 
-# TODO: move computation of D (if needed) to spacious.fit()
+	# do fit
 	t1 <- proc.time()
 	fit <- spacious.fit(y, X, D, blocks$nblocks, B, neighbors, cov, n, p, R, theta, theta.fixed,
 		verbose, tol, maxIter)
