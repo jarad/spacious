@@ -1,5 +1,5 @@
 # plot dianostics of model fit
-"plot.spacious" <- function(x) {
+"plot.spacious" <- function(x, ...) {
 
 	# plot spatial parameter estimates vs iteration
 	par(mfrow=c(2,2))
