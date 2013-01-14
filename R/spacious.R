@@ -3,7 +3,7 @@
 	formula, data, S,                       # input data
 	cov="exp", cov.inits,                   # covariance function
 	B, neighbors, D,
-	fixed,                                  # fixed parameters
+	fixed=list(smoothness=0.5),             # fixed parameters
 	blocks=list(type="cluster",nblocks=4),  # blocking style
 	verbose=FALSE, tol=1e-3, maxIter=100    # algorithm control params
 ) {
