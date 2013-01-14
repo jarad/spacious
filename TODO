@@ -14,4 +14,4 @@
 	o Consider moving computation of D (if needed) to spacious.fit()
 - In summary():
 	o Figure out how to make nice tables of results
-
+- Add source/reference for mean_max_temps data set
