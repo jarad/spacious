@@ -28,6 +28,11 @@ spacious(formula, data, S, cov = "exp", cov.inits, B,
 \seealso{
 	\code{\link{mean_max_temps}}
 }
+\references{
+Jo Eidsvik, Benjamin A. Shaby, Brian J. Reich, Matthew Wheeler, and Jarad Niemi.
+``Estimation and prediction in spatial models with block composite likelihoods using
+parallel computing.'' Journal of Computational and Graphical Statistics (accepted)
+}
 \examples{
 
 \dontrun{
@@ -40,8 +45,11 @@ y <- mvrnorm(1, rep(5,n), Sigma)
 
 # fit model
 fit <- spacious(y~1, S=S, cov="exp", blocks=list(type="regular", nblocks=2^2))
-
 summary(fit)
+
+# make predictions
+predict(fit, newS=cbind(0.5,0.5), interval="prediction", level=0.95)
+
 }
 
 \dontrun{
