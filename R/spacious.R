@@ -31,7 +31,7 @@
 	if (missing(D)) {
 		# create distance matrix from spatial locations
 		D <- rdist(S)
-		D[row(D)==col(D)] <- 0
+		diag(D) <- 0
 	}
 
 	# setup based on covariance types
@@ -105,6 +105,9 @@
 		if (!is.null(cov.inits$range)) {
 			theta[3] <- -log(cov.inits$range)
 		}
+		if (cov == "matern" && !is.null(cov.inits$smooth)) {
+			theta[4] <- log(cov.inits$smooth)
+		}
 	}
 
 	if (verbose) {
@@ -115,7 +118,8 @@
 	grid <- c()
 	if (!missing(B) && !missing(neighbors)) {
 		# we have block memberships and neighbors, so don't do anything else
-	} else if (missing(blocks)) {
+	} else if (missing(blocks) || blocks$nblocks <= 2) {
+		# full likelihood
 		B <- rep(1,n)
 		neighbors <- matrix( c(1, 1), nrow=1 )
 	} else if (blocks$type == "cluster") {

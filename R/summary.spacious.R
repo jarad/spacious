@@ -12,7 +12,13 @@
 	rownames(df.beta) <- paste0("b",0:(nrow(df.beta)-1) )
 
 	colnames(df.theta) <- c("Estimate","Std Err")
-	rownames(df.theta) <- c("Nugget","Partial Sill","Range")
+	if (object$cov == "exp") {
+		rownames(df.theta) <- c("Nugget","Partial Sill","Range")
+	} else if (object$cov == "matern") {
+		rownames(df.theta) <- c("Nugget","Partial Sill","Range","Smoothness")
+	} else {
+		stop(paste0("Unknown covariance type ",object$cov))
+	}
 
 	ss <- list(
 		df.beta=df.beta,
