@@ -1,8 +1,11 @@
+\encoding{UTF-8}
 \name{spacious}
 \alias{spacious}
-\title{Fit block composite model}
+\title{Fit spatial model with block composite likelihood}
 \description{
-Fits a block composite model.
+Fits a spatial model using a block composite likelihood.
+The block composite likelihood provides quick estimation of spatial
+models at a cost of a small reduction in statistical efficiency.
 }
 \usage{
 spacious(formula, data, S, cov = "exp", cov.inits, B, 
@@ -11,27 +14,29 @@ spacious(formula, data, S, cov = "exp", cov.inits, B,
          verbose = FALSE, tol = 0.001, maxIter = 100)
 }
 \arguments{
-	\item{formula}{model formula}
-	\item{data}{data used in model fit}
-	\item{S}{n by 2 matrix of spatial locations}
-	\item{cov}{spatial covariance type}
-	\item{cov.inits}{initial values for covariance function}
-	\item{B}{block memberships for observations}
-	\item{neighbors}{two column matrix specifying unique neighbor relationships}
-	\item{D}{distance matrix of observations}
-	\item{fixed}{parameters fixed and not estimated during fit}
-	\item{blocks}{setup for grid of blocks}
-	\item{verbose}{show informational messages during fit}
-	\item{tol}{convergence tolerance}
-	\item{maxIter}{maximum Fisher scoring iterations}
+	\item{formula}{symbolic description of the mean structure of the model. See \code{\link{formula}}.}
+	\item{data}{optional data frame containing the variables used in the model formula.}
+	\item{S}{an n by 2 matrix of spatial locations for each observation}
+	\item{cov}{spatial covariance type. Can be either one of \sQuote{exp} or \sQuote{matern}.}
+	\item{cov.inits}{optional list of initial values for covariance function parameters. Specified as a named list(nugget, psill, range, smoothness): \sQuote{nugget} for the nugget, \sQuote{psill} for the partial sill, \sQuote{range} for the spatial range, and \sQuote{smoothness} for the \enc{Matérn}{Matern} smoothness.}
+	\item{B}{an optional vector of block memberships for each observation.}
+	\item{neighbors}{an optional two column matrix specifying the unique neighbor relationships of the blocks.}
+	\item{D}{optional n by n distance matrix specifying distances between observations.}
+	\item{fixed}{optional list of fixed covariance parameters that are not estimated. Specified as a named list(nugget, psill, range, smoothness): \sQuote{nugget} for the nugget, \sQuote{psill} for the partial sill, \sQuote{range} for the spatial range, and \sQuote{smoothness} for the \enc{Matérn}{Matern} smoothness (required for \sQuote{cov="matern"}).}
+	\item{blocks}{optional list specifying the grid of blocks. Specified as a named list(type, nblocks): \sQuote{type} of blocks can be \sQuote{regular} for a square grid of blocks, \sQuote{cluster} (\bold{default}) for an irregular grid of blocks, or \sQuote{pair} for the pairwise composite likelihood; \sQuote{nblocks} specifying the number of blocks to place observations into, with \sQuote{type=regular} requiring \sQuote{nblocks} to be a perfect square. Also, \sQuote{nblocks <= 2} specifies the full likelihood.}
+	\item{verbose}{boolean to show informational messages (\sQuote{verbose=TRUE}) during fit}
+	\item{tol}{convergence tolerance of parameter estimates.}
+	\item{maxIter}{maximum number of Fisher scoring iterations to compute.}
 }
 \seealso{
+	\code{\link{predict.spacious}},
+	\code{\link{plot.spacious}},
 	\code{\link{mean_max_temps}}
 }
 \references{
 Jo Eidsvik, Benjamin A. Shaby, Brian J. Reich, Matthew Wheeler, and Jarad Niemi.
-``Estimation and prediction in spatial models with block composite likelihoods using
-parallel computing.'' Journal of Computational and Graphical Statistics (accepted)
+\dQuote{Estimation and prediction in spatial models with block composite likelihoods using
+parallel computing.} Journal of Computational and Graphical Statistics (accepted)
 }
 \examples{
 
