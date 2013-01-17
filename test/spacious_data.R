@@ -18,7 +18,7 @@ data(mean_max_temps)
 #print(summary(fit.clus))
 
 # fit model
-fit.clus <- spacious(temp~1, data=mean_max_temps, S=cbind(mean_max_temps$lat,mean_max_temps$long), blocks=list(type="cluster", nblocks=250), verbose=TRUE)
+fit.clus <- spacious(temp~elev, data=mean_max_temps, S=cbind(mean_max_temps$lat,mean_max_temps$long), blocks=list(type="cluster", nblocks=250), verbose=TRUE)
 
 if (FALSE) {
 # plot data
