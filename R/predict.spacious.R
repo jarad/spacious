@@ -244,7 +244,7 @@
 				pred.index <- i + nFit
 
 				# the closest nLocal points to Snew[i,]
-				which.local <- sort( D[pred.index, 1:nFit], decreasing=TRUE, index.return=TRUE )$ix[1:nLocal]
+				which.local <- sort( D[pred.index, 1:nFit], decreasing=FALSE, index.return=TRUE )$ix[1:nLocal]
 
 				# compute covariance matrix
 				Sigma <- compute_cov(object$cov, object$theta, D[c(which.local, pred.index), c(which.local, pred.index)])
