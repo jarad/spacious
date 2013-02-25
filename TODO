@@ -15,3 +15,4 @@
 - In summary():
 	o Figure out how to make nice tables of results
 - Add source/reference for mean_max_temps data set
+- Add prediction variances as an output for predict()
