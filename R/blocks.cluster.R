@@ -1,6 +1,6 @@
 # create blocks by clustering locations
 "blocks.cluster" <- function(S, nblocks) {
-	km <- kmeans(S, centers=nblocks)
+	km <- kmeans(S, centers=S[round(seq(1,nrow(S),length=nblocks)),])
 
 	# create polygons from clustering
 	r.x <- c(floor(min(S[,1])),ceiling(max(S[,1])))
