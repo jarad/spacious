@@ -271,7 +271,7 @@
 
 	if (interval == "prediction") {
 		tile <- qnorm((1-level)/2, lower.tail=FALSE)
-		return(data.frame(y=y_0, lwr=y_0-tile*sd.pred, upr=y_0+tile*sd.pred))
+		return(data.frame(y=y_0, sd=sd.pred, lwr=y_0-tile*sd.pred, upr=y_0+tile*sd.pred))
 	} else {
 		return(data.frame(y=y_0))
 	}
