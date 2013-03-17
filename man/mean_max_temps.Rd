@@ -33,13 +33,12 @@ portions of European cropland. Accepted, Environmetrics.
 data(mean_max_temps)
 
 fit <- spacious(temp~elev, data=mean_max_temps,
-  S=cbind(mean_max_temps$lat,mean_max_temps$long),
-  blocks=list(type="cluster", nblocks=250)
+  S=cbind(mean_max_temps$long,mean_max_temps$lat)
 )
 
 summary(fit)
 
-predict(fit, newdata=data.frame(elev=270), newS=cbind(10,50), interval="prediction")
+predict(fit, newdata=data.frame(elev=270), newS=cbind(50,10), interval="prediction")
 }
 
 }
