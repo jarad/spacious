@@ -4,7 +4,7 @@
 	cov="exp", cov.inits,                   # covariance function
 	B, neighbors, D,
 	fixed=list(smoothness=0.5),             # fixed parameters
-	blocks=list(type="cluster",nblocks=4),  # blocking style
+	blocks=list(type="cluster"),            # blocking style
 	verbose=FALSE, tol=1e-3, maxIter=100    # algorithm control params
 ) {
 
@@ -118,14 +118,19 @@
 	grid <- c()
 	if (!missing(B) && !missing(neighbors)) {
 		# we have block memberships and neighbors, so don't do anything else
-	} else if (missing(blocks) || blocks$nblocks <= 2) {
+	} else if (blocks$type == "full" || (!is.null(blocks$nblocks) && blocks$nblocks <= 2) ) {
 		# full likelihood
-		B <- rep(1,n)
+		B         <- rep(1,n)
 		neighbors <- matrix( c(1, 1), nrow=1 )
 	} else if (blocks$type == "cluster") {
-		bc <- blocks.cluster(S, blocks$nblocks)
-		B <- bc$B
-		grid <- bc$grid
+		if (is.null(blocks$nblocks)) {
+			# deafult to one block for each 50 obs
+			blocks$nblocks <- round(n/50)
+		}
+
+		bc        <- blocks.cluster(S, blocks$nblocks)
+		B         <- bc$B
+		grid      <- bc$grid
 		neighbors <- bc$neighbors
 	} else if (blocks$type == "pair") {
 		# pairwise likelihood
@@ -134,9 +139,14 @@
 			cbind(i,(i+1):n)
 		}))
 	} else if (blocks$type=="regular") {
-		B <- rep(NA, n)   # vector to hold block memberships
+		if (is.null(blocks$nblocks)) {
+			# deafult to one block for each 50 obs
+			blocks$nblocks <- round(sqrt(n/50))^2
+		}
+
+		B         <- rep(NA, n)   # vector to hold block memberships
 		neighbors <- c()
-		snb <- sqrt(blocks$nblocks)
+		snb       <- sqrt(blocks$nblocks)
 
 		# ensure that blocks$nblocks is an integer squared
 		if (snb != round(snb)) {

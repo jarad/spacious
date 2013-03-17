@@ -10,7 +10,7 @@ models at a cost of a small reduction in statistical efficiency.
 \usage{
 spacious(formula, data, S, cov = "exp", cov.inits, B, 
          neighbors, D, fixed = list(smoothness = 0.5),
-         blocks = list(type = "cluster", nblocks = 4),
+         blocks = list(type = "cluster"),
          verbose = FALSE, tol = 0.001, maxIter = 100)
 }
 \arguments{
@@ -23,7 +23,7 @@ spacious(formula, data, S, cov = "exp", cov.inits, B,
 	\item{neighbors}{an optional two column matrix specifying the unique neighbor relationships of the blocks.}
 	\item{D}{optional n by n distance matrix specifying distances between observations.}
 	\item{fixed}{optional list of fixed covariance parameters that are not estimated. Specified as a named list(nugget, psill, range, smoothness): \sQuote{nugget} for the nugget, \sQuote{psill} for the partial sill, \sQuote{range} for the spatial range, and \sQuote{smoothness} for the \enc{Matérn}{Matern} smoothness (required for \sQuote{cov="matern"}).}
-	\item{blocks}{optional list specifying the grid of blocks. Specified as a named list(type, nblocks): \sQuote{type} of blocks can be \sQuote{regular} for a square grid of blocks, \sQuote{cluster} (\bold{default}) for an irregular grid of blocks, or \sQuote{pair} for the pairwise composite likelihood; \sQuote{nblocks} specifying the number of blocks to place observations into, with \sQuote{type=regular} requiring \sQuote{nblocks} to be a perfect square. Also, \sQuote{nblocks <= 2} specifies the full likelihood.}
+	\item{blocks}{optional list specifying the grid of blocks. Specified as a named list(type, nblocks): \sQuote{type} of blocks can be \sQuote{regular} for a square grid of blocks, \sQuote{cluster} (\bold{default}) for an irregular grid of blocks, \sQuote{pair} for the pairwise composite likelihood, or \sQuote{full} for the full likelihood; \sQuote{nblocks} specifying the number of blocks to place observations into, with the default being n/50, and \sQuote{type=regular} requiring \sQuote{nblocks} to be a perfect square. Also, \sQuote{nblocks <= 2} specifies the full likelihood.}
 	\item{verbose}{boolean to show informational messages (\sQuote{verbose=TRUE}) during fit}
 	\item{tol}{convergence tolerance of parameter estimates.}
 	\item{maxIter}{maximum number of Fisher scoring iterations to compute.}
