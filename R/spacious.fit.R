@@ -96,11 +96,11 @@
 		b[seq.p]  <<- 0
 
 		apply(neighbors, 1, function(row) {
-			in.pair <- B==row[1] | B==row[2]
-			n.pair <- sum(in.pair)
+			in.pair <- c(which(B==row[1]),  which(B==row[2]))
 
-			Sigma <- compute_cov(cov, t_theta(theta), D[in.pair,in.pair])
+			Sigma    <- compute_cov(cov, t_theta(theta), D[in.pair,in.pair])
 			invSigma <- chol2inv(chol(Sigma))
+
 			A <<- A + t(X[in.pair,]) %*% invSigma %*% X[in.pair,]
 			b <<- b + t(X[in.pair,]) %*% invSigma %*% y[in.pair]
 		})
@@ -154,6 +154,7 @@
 					index <<- index+1
 				})
 			})
+
 		})
 
 		index <- 1
@@ -195,8 +196,8 @@
 	# estimate params
 
 	# get initial beta from initial theta
-	beta <- update_beta(theta)
-	Nbeta <- length(beta)
+	beta   <- update_beta(theta)
+	Nbeta  <- length(beta)
 	Ntheta <- length(theta)
 
 	names.show <- c("beta")
@@ -222,6 +223,7 @@
 		# update beta
 		beta <- update_beta(theta)
 
+
 		# get -2 * log likelihood
 		ll <- -2 * loglik(beta, theta)
 
@@ -236,23 +238,21 @@
 			print( show )
 		}
 
-		if (iter > 1) {
-			# have we converged?
-			max_diff <- 0
-			if (Nnot_fixed > 0) {
-				max_diff <- max( c(
-					abs(prev.beta - beta)/abs(beta),
-					abs(prev.theta[which.not_fixed]-theta[which.not_fixed])/abs(theta[which.not_fixed])
-				) )
+		# have we converged?
+		max_diff <- 0
+		if (Nnot_fixed > 0) {
+			max_diff <- max( c(
+				abs(prev.beta - beta)/abs(beta),
+				abs(prev.theta[which.not_fixed]-theta[which.not_fixed])/abs(theta[which.not_fixed])
+			) )
+		}
+
+		if ( max_diff <= tol ) {
+			if (verbose) {
+				cat("Converged at iteration",iter,"\n")
 			}
 
-			if ( max_diff <= tol ) {
-				if (verbose) {
-					cat("Converged at iteration",iter,"\n")
-				}
-
-				break
-			}
+			break
 		}
 	}
 
@@ -286,45 +286,49 @@
 			}
 
 			if (i == j) {
-				# this should only happen when we have one block
+				# block pairs are the same
 				J.beta <- J.beta + t(X[in.i,]) %*% invSigma.i %*% X[in.i,]
-				next;
-			}
+			} else {
+				# block pairs are not the same
 
-			# which sites are in block j?
-			in.j       <- which(B==neighbors[j,1] | B==neighbors[j,2])
-			n.j        <- length(in.j)
-			Sigma.j    <- compute_cov(cov, t_theta(theta), D[in.j,in.j])
-			invSigma.j <- chol2inv(chol(Sigma.j))
+				# which sites are in block pair j?
+				in.j       <- which(B==neighbors[j,1] | B==neighbors[j,2])
+				n.j        <- length(in.j)
+				Sigma.j    <- compute_cov(cov, t_theta(theta), D[in.j,in.j])
+				invSigma.j <- chol2inv(chol(Sigma.j))
 
-			Sigma.ij <- compute_cov(cov, t_theta(theta), D[c(in.i,in.j),c(in.i,in.j)])
+				Sigma.ij   <- compute_cov(cov, t_theta(theta), D[c(in.i,in.j),c(in.i,in.j)])
 
-			J.beta <- J.beta + t(X[in.i,]) %*% invSigma.i %*% Sigma.ij[1:n.i,n.i+1:n.j] %*% invSigma.j %*% X[in.j,]
+				J.beta     <- J.beta + 2*t(X[in.i,]) %*% invSigma.i %*% Sigma.ij[1:n.i,n.i+1:n.j] %*% invSigma.j %*% X[in.j,]
 
-			if (j > i) {
-				# update J.theta
-				sapply(seq.R, function(r) {
-					sapply(r:R, function(s) {
-						if (!theta.fixed[r] & !theta.fixed[s]) {
-							B.ir <- invSigma.i %*% partials[[r]](theta, n.i, in.i) %*% invSigma.i
-							B.js <- invSigma.j %*% partials[[s]](theta, n.j, in.j) %*% invSigma.j
-							add <- sum(diag( B.ir %*% Sigma.ij[1:n.i,n.i+1:n.j] %*% B.js %*% Sigma.ij[n.i+1:n.j,1:n.i] ))
+				if (j > i) {
+					# update J.theta
+					sapply(seq.R, function(r) {
+						sapply(r:R, function(s) {
+							if (!theta.fixed[r] & !theta.fixed[s]) {
+								B.ir <- invSigma.i %*% partials[[r]](theta, n.i, in.i) %*% invSigma.i
+								B.js <- invSigma.j %*% partials[[s]](theta, n.j, in.j) %*% invSigma.j
+								add  <- 2*sum(diag( B.ir %*% Sigma.ij[1:n.i,n.i+1:n.j] %*% B.js %*% Sigma.ij[n.i+1:n.j,1:n.i] ))
 
-							J.theta[r,s] <- J.theta[r,s] + add
-							if (r != s) {
-								J.theta[s,r] <- J.theta[s,r] + add
+								J.theta[r,s] <<- J.theta[r,s] + add
+								if (r != s) {
+									J.theta[s,r] <<- J.theta[s,r] + add
+								}
 							}
-						}
+						})
 					})
-				})
-			}
+				}
+
+			}  # end i != j
+
 		}
 
-		vcov.beta  <- chol2inv(chol(A %*% chol2inv(chol(J.beta)) %*% A))
-		if (Nnot_fixed > 0) {
-			vcov.theta[which.not_fixed,which.not_fixed] <- chol2inv(chol(FI[which.not_fixed,which.not_fixed] %*%
-				chol2inv(chol(J.theta[which.not_fixed,which.not_fixed])) %*% FI[which.not_fixed,which.not_fixed]))
-		}
+	}
+
+	vcov.beta  <- chol2inv(chol(A %*% chol2inv(chol(J.beta)) %*% A))
+	if (Nnot_fixed > 0) {
+		vcov.theta[which.not_fixed,which.not_fixed] <- chol2inv(chol(FI[which.not_fixed,which.not_fixed] %*%
+			chol2inv(chol(J.theta[which.not_fixed,which.not_fixed])) %*% FI[which.not_fixed,which.not_fixed]))
 	}
 
 	# transform theta
