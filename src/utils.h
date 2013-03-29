@@ -3,7 +3,8 @@
 
 #include <stdio.h>
 
-// use printf when running from the command line
+// MSG() takes the place of printf() and Rprintf().
+// - Use printf when running from the command line (CLINE)
 #ifdef CLINE
 	#define MSG printf
 #else
@@ -28,6 +29,7 @@ inline int symi(int a, int b) {
 	}
 }
 
+// function definitions
 void chol2inv(int n, double *A);
 void disp_sym(double *mat, int lo, int hi);
 

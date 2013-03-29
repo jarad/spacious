@@ -10,19 +10,22 @@ public:
 	~BlockComp();
 
 	// types of likelihoods we can fit
-	enum LikForm { Full, Pair, Block };
+	enum LikForm { Full, Pair, Block, IndBlock };
 	enum CovType { Exp, Matern };
 
 	void setConserveMemory(bool conserve) { mConsMem = conserve; }
 
 	void initPointers();
 	void setLikForm(LikForm form);
-	void setCovType(CovType type) { mCovType = type; };
+	void setCovType(CovType type);
 	void setData(int n, double *y, double *S, int nblocks, int *B, int p, double *X, int npairs, int *neighbors);
 	void setInits(int ntheta, double *theta);
 
 	// fit model with Fisher scoring
 	bool fit(bool verbose);
+
+	// compute log likelihood at specified parameters
+	double computeLogLik(double *beta, double *theta);
 
 	// methods to compute quantities of interest (requires fit)
 	void computeStdErrs();
@@ -31,8 +34,8 @@ public:
 private:
 	void cleanup();
 
-	void updateBeta(Cov *cov);
-	void updateTheta(Cov *cov);
+	void updateBeta();
+	void updateTheta();
 
 	int     mN;          // number of observations
 	double *mY;          // response
@@ -45,18 +48,22 @@ private:
 	double **mWithinD;    // within block distance matrices
 	double **mBetweenD;   // between block distance matrices
 
-	int     mP;          // number of covariates
+	int     mNbeta;      // number of covariates
 	double *mX;          // model matrix
 
 	int  mNpairs;        // number of block pairs
 	int *mNeighbors;     // mNpairs by 2 matrix of neighbors
 	int  mMaxPair;       // largest number of obs in each pair
 
-	LikForm mLikForm;    // likelihood form
-	CovType mCovType;    // covariance type
+	LikForm  mLikForm;    // likelihood form
+	CovType  mCovType;    // covariance type
+	Cov     *mCov;
+	int      mNtheta;     // number of covariance parameters
 
 	bool   mConsMem;     // should memory be conserved?
 	bool   mHasFit;      // do we have a fit?
+	bool   mConverged;   // did the fit converge?
+	int    mIters;       // number of iters through fit
 
 	double mIterTol;     // control parameters
 	int    mMaxIter;
@@ -64,13 +71,16 @@ private:
 	double *mThetaInits; // initial values
 	double *mBeta;       // model parametes
 	double *mTheta;
-	double *mBetaT;      // transformed model parametes
-	double *mThetaT;
+	double *mThetaT;     // transformed model parametes
 
-	// update vars needed elsewhere
+	// update vars
 	double *mSigma;
 	double *mBeta_A;
 	double *mBeta_b;
+
+	double **mTheta_W;
+	double  *mTheta_H;
+	double  *mTheta_P;
 };
 
 #endif
