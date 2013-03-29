@@ -11,30 +11,30 @@ require(spacious)
 set.seed(311)
 
 # generate data to use for fitting a block composite model
-n <- 250
+n <- 500
 np <- 5   # number to predict
 
 # generate spatial locations S
-S <- cbind(runif(n+np), runif(n+np))
+S <- round(cbind(runif(n+np), runif(n+np)),3)
 
 # distance matrix
 D <- rdist(S); D[row(D)==col(D)] <- 0
 
 # matern covariance function parameters
 nugget <- 0.5
-tau2 <- 0.5
-range <- 1.5
+tau2   <- 0.5
+range  <- 0.25
 smooth <- 0.50  # 0.5 = exponential cov
 mu <- 5
 #Sigma <- nugget * diag(n) + tau2 * matern(D, range, smooth)
-Sigma <- nugget * diag(n+np) + tau2 * exp(-range * D)
+Sigma <- nugget * diag(n+np) + tau2 * exp(-D/range)
 
 # generate data
-y <- mvrnorm(1, mu=rep(mu, n+np), Sigma=Sigma)
+y <- round(mvrnorm(1, mu=rep(mu, n+np), Sigma=Sigma),3)
 
 # fit with spacious
 X <- matrix(1, nrow=length(y), ncol=1)
-x1 <- rnorm(n+np)
+x1 <- round(rnorm(n+np),3)
 
 y.fit <- y[1:n]
 y.pred <- y[n+1:np]
@@ -55,7 +55,7 @@ time.spacious <- proc.time()
 #fit.spacious <- spacious(y, X, S, cov="exp", nblocks=1^2)
 #fit.spacious <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="exp", nblocks=2^2, verbose=TRUE)
 #fit.spacious <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="exp", blocks=list(type="regular", nblocks=2^2), verbose=TRUE)
-fit.spacious <- spacious(y~1, data=data.frame(y=y[1:n]), S=S[1:n,], cov="exp", blocks=list(type="regular", nblocks=2^2), verbose=TRUE)
+fit.spacious <- spacious(y~x, data=data.frame(y=y[1:n], x=x1[1:n]), S=S[1:n,], cov="exp", blocks=list(type="regular", nblocks=3^2), verbose=TRUE)
 #fit.spacious <- spacious(y.fit~X.fit, S=S.fit, cov="exp", blocks=list(type="regular", nblocks=2^2), verbose=TRUE)
 time.spacious <- proc.time() - time.spacious
 beta.spacious <- fit.spacious$beta
