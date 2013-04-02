@@ -129,14 +129,13 @@ void BlockComp::setCovType(CovType type) {
 	}
 }
 
-
 // specify data to fit model to
 void BlockComp::setData(int n, double *y, double *S, int nblocks, int *B, int p, double *X, int npairs, int *neighbors) {
 	int i,j,k;
 	int blk1, blk2;
 	int nIn1, nIn2;
 
-	// data is loaded... require new fit
+	// require new fit
 	mHasFit  = false;
 
 	cleanup();
@@ -419,9 +418,7 @@ void BlockComp::updateBeta() {
 
 			if (!mConsMem) {
 				// fill in covariance matrix between these two blocks
-				mCov->compute(mSigma, mNB[blk1], mTheta, mWithinD[blk1], 0);
-				mCov->compute(mSigma, mNB[blk2], mTheta, mWithinD[blk2], mNB[blk1]);
-				mCov->cross(mSigma, mNB[blk1], mNB[blk2], mTheta, mBetweenD[pair]);
+				mCov->compute(mSigma, mTheta, mNB[blk1], mWithinD[blk1], mNB[blk2], mWithinD[blk2], mBetweenD[pair]);
 			} else {
 				// we're conserving memory
 
@@ -529,9 +526,7 @@ void BlockComp::updateTheta() {
 
 			if (!mConsMem) {
 				// fill in covariance matrix between these two blocks
-				mCov->compute(mSigma, mNB[blk1], mTheta, mWithinD[blk1], 0);
-				mCov->compute(mSigma, mNB[blk2], mTheta, mWithinD[blk2], mNB[blk1]);
-				mCov->cross(mSigma, mNB[blk1], mNB[blk2], mTheta, mBetweenD[pair]);
+				mCov->compute(mSigma, mTheta, mNB[blk1], mWithinD[blk1], mNB[blk2], mWithinD[blk2], mBetweenD[pair]);
 			} else {
 				// we're conserving memory
 
@@ -656,13 +651,13 @@ MSG("thetaT=%.2f %.2f %.2f\n", mThetaT[0], mThetaT[1], mThetaT[2]);
 */
 
 	} else if (mLikForm == IndBlock) {
-		// update beta using independent blocks
+		// update theta using independent blocks
 MSG("TODO\n");
 	} else if (mLikForm == Pair) {
-		// update beta using pairwise composite likelihood
+		// update theta using pairwise composite likelihood
 MSG("TODO\n");
 	} else if (mLikForm == Full) {
-		// update beta using full likelihood
+		// update theta using full likelihood
 MSG("TODO\n");
 	}
 

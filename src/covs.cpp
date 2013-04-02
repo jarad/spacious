@@ -8,6 +8,12 @@ void Cov::setFixed(int n, int *which, double *values) {
 	mFixedValues = values;
 }
 
+// compute covariance for a single block of locations
+void Cov::compute(double *Sigma, double *theta, int n, double *D) {
+  compute(Sigma, theta, n, D, 0, NULL, NULL);
+}
+
+// compute partials for a single block of locations
 void Cov::partials(double *P, bool *diag, int param, double *theta, double *thetaT, int n, double *D) {
   partials(P, diag, param, theta, thetaT, n, D, 0, NULL, NULL);
 }
@@ -22,24 +28,31 @@ CovExp::CovExp() {
 	mNparams = 3;
 }
 
-void CovExp::compute(double *Sigma, int n, double *theta, double *D, int offset) {
+void CovExp::compute(double *Sigma, double *theta, int n1, double *D1, int n2, double *D2, double *Dc) {
 	int i,j;
 
-	for (i = 0; i < n; i++) {
-		Sigma[symi(i+offset,i+offset)] = theta[0] + theta[1];
+	for (i = 0; i < n1; i++) {
+		Sigma[symi(i,i)] = theta[0] + theta[1];
 
-		for (j = i+1; j < n; j++) {
-			Sigma[symi(i+offset,j+offset)] = theta[1] * exp(-D[symi(i,j)]/theta[2]);
+		for (j = i+1; j < n1; j++) {
+			Sigma[symi(i,j)] = theta[1] * exp(-D1[symi(i,j)]/theta[2]);
 		}
 	}
-}
 
-void CovExp::cross(double *Sigma, int n, int m, double *theta, double *D) {
-	int i,j;
+	if (n2 > 0) {
+		for (i = 0; i < n2; i++) {
+			Sigma[symi(i+n1,i+n1)] = theta[0] + theta[1];
 
-	for (i = 0; i < n; i++) {
-		for (j = 0; j < m; j++) {
-			Sigma[symi(i,j+n)] = theta[1] * exp(-D[i + j*n]/theta[2]);
+			for (j = i+1; j < n2; j++) {
+				Sigma[symi(i+n1,j+n1)] = theta[1] * exp(-D2[symi(i,j)]/theta[2]);
+			}
+		}
+
+		// cross terms
+		for (i = 0; i < n1; i++) {
+			for (j = 0; j < n2; j++) {
+				Sigma[symi(i,j+n1)] = theta[1] * exp(-Dc[i + j*n1]/theta[2]);
+			}
 		}
 	}
 }
