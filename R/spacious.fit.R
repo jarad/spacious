@@ -1,9 +1,10 @@
 # function to run algorithm for fitting a block composite model
-"spacious.fit" <- function(y, X, D, nblocks, B, neighbors, cov, n, p, R, theta, theta.fixed,
+"spacious.fit" <- function(y, X, S, nblocks, B, neighbors, cov, n, p, R, theta, theta.fixed,
 	verbose, tol=1e-3, maxIter=100) {
 	# y: response
 	# X: model matrix
-	# D: distance matrix
+	# S: spatial locations
+	# nblocks: number of blocks
 	# B: block memberships
 	# neighbors: 2 column matrix listing unique neighbors of blocks
 	# cov: covariance function type
@@ -16,6 +17,10 @@
 	# verbose: print messages?
 	# tol: error tolerance for identifying convergence
 	# maxIter: maximum number of Fisher scoring iterations
+
+	# create distance matrix from spatial locations
+	D <- rdist(S)
+	diag(D) <- 0
 
 	nH <- R*(R+1)/2
 
@@ -268,47 +273,110 @@
 	se.beta <- rep(0, p)
 	se.theta <- rep(0, R)
 
+if (FALSE) { # compute standard errors
+	# update hessian
+	update_theta(beta, theta)
+
 	# compute standard errors
 	J.beta  <- matrix(0, nrow=p, ncol=p)
+#	J.theta <- matrix(0, nrow=R, ncol=R) #diag(diag(FI))
 	J.theta <- FI
 
 	for (i in 1:nrow(neighbors)) {
-		# which sites are in block i?
-		in.i       <- which(B==neighbors[i,1] | B==neighbors[i,2])
-		n.i        <- length(in.i)
-		Sigma.i    <- compute_cov(cov, t_theta(theta), D[in.i,in.i])
-		invSigma.i <- chol2inv(chol(Sigma.i))
 
 		for (j in 1:nrow(neighbors)) {
 			# do pairs i and j have a common block?
-			if (!any(neighbors[i,] == neighbors[j,1]) & !any(neighbors[i,] == neighbors[j,2])) {
-				next;
+
+#			if (!any(neighbors[i,] == neighbors[j,1]) & !any(neighbors[i,] == neighbors[j,2])) {
+#				next;
+#			}
+
+			k1         <- neighbors[i,1]
+			l1         <- neighbors[i,2]
+			in.k1      <- which(B==k1)
+			in.l1      <- which(B==l1)
+			n.k1       <- length(in.k1)
+			n.l1       <- length(in.l1)
+			k2         <- neighbors[j,1]
+			l2         <- neighbors[j,2]
+			in.k2      <- which(B==k2)
+			in.l2      <- which(B==l2)
+			n.k2       <- length(in.k2)
+			n.l2       <- length(in.l2)
+
+#			if (k1 != k2 & k1 != l2 & l1 != k2 & l1 != l2) {
+#				next;
+#			}
+
+			# which sites are in pair i?
+			in.i       <- c(in.k1, in.l1)
+			n.i        <- n.k1+n.l1
+			Sigma.i    <- compute_cov(cov, t_theta(theta), D[in.i,in.i])
+			invSigma.i <- chol2inv(chol(Sigma.i))
+
+			# which sites are in pair j?
+			in.j       <- c(in.k2, in.l2)
+			n.j        <- length(in.j)
+			Sigma.j    <- compute_cov(cov, t_theta(theta), D[in.j,in.j])
+			invSigma.j <- chol2inv(chol(Sigma.j))
+
+			# compute covariance between pairs of blocks
+			Sigma.ij   <- compute_cov(cov, t_theta(theta), D[c(in.i,in.j),c(in.i,in.j)])
+
+if (FALSE) {
+			if (!any(neighbors[c(which(neighbors[,1]==k1),which(neighbors[,2]==k1)),] == k2)) {
+				# pair (k1,k2) is zero
+				Sigma.ij[1:n.k1,n.i+1:n.k2] <- 0
+				Sigma.ij[n.i+1:n.k2,1:n.k1] <- 0
 			}
 
+			if (!any(neighbors[c(which(neighbors[,1]==l1),which(neighbors[,2]==l1)),] == k2)) {
+				# pair (l1,k2) is zero
+				Sigma.ij[n.k1+1:n.l1,n.i+1:n.k2] <- 0
+				Sigma.ij[n.i+1:n.k2,n.k1+1:n.l1] <- 0
+			}
+
+			if (!any(neighbors[c(which(neighbors[,1]==k1),which(neighbors[,2]==k1)),] == l2)) {
+				# pair (k1,l2) is zero
+				Sigma.ij[1:n.k1,n.i+n.k2+1:n.l2] <- 0
+				Sigma.ij[n.i+n.k2+1:n.l2,1:n.k1] <- 0
+			}
+
+			if (!any(neighbors[c(which(neighbors[,1]==l1),which(neighbors[,2]==l1)),] == l2)) {
+				# pair (l1,l2) is zero
+				Sigma.ij[n.k1+1:n.l1,n.i+n.k2+1:n.l2] <- 0
+				Sigma.ij[n.i+n.k2+1:n.l2,n.k1+1:n.l1] <- 0
+			}
+}
+
 			if (i == j) {
-				# block pairs are the same
 				J.beta <- J.beta + t(X[in.i,]) %*% invSigma.i %*% X[in.i,]
+
+if (FALSE) {
+				sapply(seq.R, function(r) {
+					sapply(r:R, function(s) {
+						if (!theta.fixed[r] & !theta.fixed[s]) {
+							add <- .5*sum(diag( invSigma.i %*% partials[[r]](theta, n.i, in.i) %*% invSigma.i %*% partials[[s]](theta, n.i, in.i) ))
+
+							J.theta[r,s] <<- J.theta[r,s] + add
+							if (r != s) {
+								J.theta[s,r] <<- J.theta[s,r] + add
+							}
+						}
+					})
+				})
+}
+
 			} else {
-				# block pairs are not the same
-
-				# which sites are in block pair j?
-				in.j       <- which(B==neighbors[j,1] | B==neighbors[j,2])
-				n.j        <- length(in.j)
-				Sigma.j    <- compute_cov(cov, t_theta(theta), D[in.j,in.j])
-				invSigma.j <- chol2inv(chol(Sigma.j))
-
-				Sigma.ij   <- compute_cov(cov, t_theta(theta), D[c(in.i,in.j),c(in.i,in.j)])
-
-				J.beta     <- J.beta + 2*t(X[in.i,]) %*% invSigma.i %*% Sigma.ij[1:n.i,n.i+1:n.j] %*% invSigma.j %*% X[in.j,]
+				J.beta <- J.beta + t(X[in.i,]) %*% invSigma.i %*% Sigma.ij[1:n.i,n.i+1:n.j] %*% invSigma.j %*% X[in.j,]
 
 				if (j > i) {
-					# update J.theta
 					sapply(seq.R, function(r) {
 						sapply(r:R, function(s) {
 							if (!theta.fixed[r] & !theta.fixed[s]) {
 								B.ir <- invSigma.i %*% partials[[r]](theta, n.i, in.i) %*% invSigma.i
 								B.js <- invSigma.j %*% partials[[s]](theta, n.j, in.j) %*% invSigma.j
-								add  <- 2*sum(diag( B.ir %*% Sigma.ij[1:n.i,n.i+1:n.j] %*% B.js %*% Sigma.ij[n.i+1:n.j,1:n.i] ))
+								add  <- sum(diag( B.ir %*% Sigma.ij[1:n.i,n.i+1:n.j] %*% B.js %*% Sigma.ij[n.i+1:n.j,1:n.i] ))
 
 								J.theta[r,s] <<- J.theta[r,s] + add
 								if (r != s) {
@@ -319,17 +387,22 @@
 					})
 				}
 
-			}  # end i != j
+			}
 
 		}
 
 	}
+
+print(round(FI,3))
+print(round(J.theta,3))
+print(round(FI %*% solve(J.theta),3))
 
 	vcov.beta  <- chol2inv(chol(A %*% chol2inv(chol(J.beta)) %*% A))
 	if (Nnot_fixed > 0) {
 		vcov.theta[which.not_fixed,which.not_fixed] <- chol2inv(chol(FI[which.not_fixed,which.not_fixed] %*%
 			chol2inv(chol(J.theta[which.not_fixed,which.not_fixed])) %*% FI[which.not_fixed,which.not_fixed]))
 	}
+} # end std errors
 
 	# transform theta
 	theta <- t_theta(theta)

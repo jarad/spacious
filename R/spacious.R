@@ -2,7 +2,7 @@
 "spacious" <- function(
 	formula, data, S,                       # input data
 	cov="exp", cov.inits,                   # covariance function
-	B, neighbors, D,
+	B, neighbors,
 	fixed=list(smoothness=0.5),             # fixed parameters
 	blocks=list(type="cluster"),            # blocking style
 	verbose=FALSE, tol=1e-3, maxIter=100    # algorithm control params
@@ -27,12 +27,6 @@
 	# information about model matrix
 	n <- nrow(X)
 	p <- ncol(X)
-
-	if (missing(D)) {
-		# create distance matrix from spatial locations
-		D <- rdist(S)
-		diag(D) <- 0
-	}
 
 	# setup based on covariance types
 	R <- NA    # number of covariance parameters
@@ -198,7 +192,7 @@
 
 	# do fit
 	t1 <- proc.time()
-	fit <- spacious.fit(y, X, D, blocks$nblocks, B, neighbors, cov, n, p, R, theta, theta.fixed,
+	fit <- spacious.fit(y, X, S, blocks$nblocks, B, neighbors, cov, n, p, R, theta, theta.fixed,
 		verbose, tol, maxIter)
 	t <- proc.time()-t1
 
@@ -210,7 +204,6 @@
 
 	fit$y         <- y
 	fit$S         <- S
-	fit$D         <- D
 	fit$nblocks   <- blocks$nblocks
 	fit$B         <- B
 	fit$grid      <- grid
