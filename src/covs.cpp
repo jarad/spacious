@@ -2,12 +2,6 @@
 #include <math.h>
 #include "covs.h"
 
-void Cov::setFixed(int n, int *which, double *values) {
-	mNfixed      = n;
-	mFixed       = which;
-	mFixedValues = values;
-}
-
 // compute covariance for a single block of locations
 void Cov::compute(double *Sigma, double *theta, int n, double *D) {
   compute(Sigma, theta, n, D, 0, NULL, NULL);
@@ -17,7 +11,6 @@ void Cov::compute(double *Sigma, double *theta, int n, double *D) {
 void Cov::partials(double *P, bool *diag, int param, double *theta, double *thetaT, int n, double *D) {
   partials(P, diag, param, theta, thetaT, n, D, 0, NULL, NULL);
 }
-
 
 /*
  * Exponential covariance

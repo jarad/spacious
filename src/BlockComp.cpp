@@ -12,6 +12,13 @@
 BlockComp::BlockComp() {
 	initPointers();
 
+	// only initalize these pointers to start
+	mCov        = NULL;
+	mThetaInits = NULL;
+	mFixed      = NULL;
+	mFixedVals  = NULL;
+
+	// default booleans
 	mConsMem   = false;
 	mHasFit    = false;
 	mConverged = false;
@@ -27,6 +34,12 @@ BlockComp::BlockComp() {
 
 BlockComp::~BlockComp() {
 	cleanup();
+
+	// only clear these to end
+	delete mCov;
+	free(mThetaInits);
+	free(mFixed);
+	free(mFixedVals);
 }
 
 // initialize pointers
@@ -35,9 +48,6 @@ void BlockComp::initPointers() {
 	mWhichB     = NULL;
 	mWithinD    = NULL;
 	mBetweenD   = NULL;
-	mThetaInits = NULL;
-
-	mCov        = NULL;
 
 	mBeta       = NULL;
 	mTheta      = NULL;
@@ -85,9 +95,6 @@ void BlockComp::cleanup() {
 		free(mBetweenD);
 	}
 
-	delete mCov;
-
-	free(mThetaInits);
 	free(mBeta);
 	free(mTheta);
 	free(mThetaT);
@@ -127,6 +134,21 @@ void BlockComp::setCovType(CovType type) {
 	} else {
 		MSG("Unknown covariance type\n");
 	}
+
+	// initial values need to be re-specified
+	free(mThetaInits);
+	mThetaInits = NULL;
+
+	// default to no fixed parameters
+	bool   fixed[mCov->numParams()];
+	double values[mCov->numParams()];
+
+	for (int i = 0; i < mCov->numParams(); i++) {
+		fixed[i]  = false;
+		values[i] = 0;
+	}
+
+	setFixed(fixed, values);
 }
 
 // specify data to fit model to
@@ -135,15 +157,17 @@ void BlockComp::setData(int n, double *y, double *S, int nblocks, int *B, int p,
 	int blk1, blk2;
 	int nIn1, nIn2;
 
+#ifdef DEBUG
+	printf("n=%d, y[0]=%.2f, nblocks=%d, B[0]=%d, p=%d, X[0]=%.2f, npairs=%d, neighbors[0]=%d, mHasFit=%d\n",
+	       n, y[0], nblocks, B[0], p, X[0], npairs, neighbors[0], mHasFit);
+#endif
+
 	// require new fit
 	mHasFit  = false;
 
 	cleanup();
 
 	// load the new data
-printf("n=%d, y[0]=%.2f, nblocks=%d, B[0]=%d, p=%d, X[0]=%.2f, npairs=%d, neighbors[0]=%d, mHasFit=%d\n",
-	n, y[0], nblocks, B[0], p, X[0], npairs, neighbors[0], mHasFit);
-
 	mN = n;
 	mY = y;
 
@@ -198,7 +222,10 @@ printf("n=%d, y[0]=%.2f, nblocks=%d, B[0]=%d, p=%d, X[0]=%.2f, npairs=%d, neighb
 	// allocate largest Sigma we need
 	mSigma = (double *)malloc(sizeof(double)*symi(0,mMaxPair));
 	for (i = 0; i < symi(0,mMaxPair); i++) { mSigma[i] = 0; }
-MSG("max pair=%d with length %d\n", mMaxPair, symi(0, mMaxPair));
+
+#ifdef DEBUG
+	MSG("max pair=%d with length %d\n", mMaxPair, symi(0, mMaxPair));
+#endif
 
 	if (!mConsMem) {
 		// not trying to conserve memory, so store distances...
@@ -264,12 +291,34 @@ MSG("max pair=%d with length %d\n", mMaxPair, symi(0, mMaxPair));
 	}  // end memory conservation check
 }
 
-void BlockComp::setInits(int ntheta, double *theta) {
+void BlockComp::setInits(double *theta) {
 	free(mThetaInits);
 
-	mThetaInits = (double *)malloc(sizeof(double)*ntheta);
-	for (int i = 0; i < ntheta; i++) {
+	mThetaInits = (double *)malloc(sizeof(double)*mCov->numParams());
+	for (int i = 0; i < mCov->numParams(); i++) {
 		mThetaInits[i] = theta[i];
+	}
+}
+
+// which covariance parameters are fixed?
+void BlockComp::setFixed(bool *fixed, double *values) {
+	// require a (new) fit
+	mHasFit = false;
+
+	free(mFixed);
+	free(mFixedVals);
+
+	mFixed     = (bool *)malloc(sizeof(bool)*mCov->numParams());
+	mFixedVals = (double *)malloc(sizeof(double)*mCov->numParams());
+
+	mNfixed = 0;
+	for (int i = 0; i < mCov->numParams(); i++) {
+		mFixed[i]     = fixed[i];
+		mFixedVals[i] = values[i];
+
+		if (mFixed[i]) {
+			mNfixed++;
+		}
 	}
 }
 
@@ -278,7 +327,9 @@ bool BlockComp::fit(bool verbose) {
 	int i;
 	bool largeDiff;
 
-	if (verbose) { MSG("Starting fit()...\n"); }
+#ifdef DEBUG
+	MSG("Starting fit()...\n");
+#endif
 
 	// make sure we have initial values
 	if (mThetaInits == NULL) {
@@ -286,9 +337,7 @@ bool BlockComp::fit(bool verbose) {
 		return(false);
 	}
 
-	setCovType(mCovType);
-
-	// number of sptial parameters
+	// number of covariance parameters
 	mNtheta = mCov->numParams();
 
 	// initialize covariance params
@@ -299,7 +348,11 @@ bool BlockComp::fit(bool verbose) {
 
 	// set initial theta and transform
 	for (i = 0; i < mNtheta; i++) {
-		mTheta[i]  = mThetaInits[i];
+		if (mFixed[i]) {
+			mTheta[i]  = mFixedVals[i];
+		} else {
+			mTheta[i]  = mThetaInits[i];
+		}
 		mThetaT[i] = mTheta[i];
 	}
 	mCov->transformToReal(mThetaT);
@@ -331,6 +384,7 @@ bool BlockComp::fit(bool verbose) {
 		mTheta_W[i] = (double *)malloc(sizeof(double)*pow(mMaxPair,2));
 	}
 
+	// vectors to hold previous parameter values
 	double *prevBeta   = (double *)malloc(sizeof(double)*mNbeta);
 	double *prevThetaT = (double *)malloc(sizeof(double)*mNtheta);
 
@@ -345,7 +399,8 @@ bool BlockComp::fit(bool verbose) {
 		// update mean params
 		updateBeta();
 
-		if (true) {
+		if (verbose) {
+			// display iteration information
 			MSG("iter=%d: ", mIters+1);
 			MSG("beta: ");
 			for (i = 0; i < mNbeta; i++) { MSG("%.2f ", mBeta[i]); }
@@ -354,6 +409,7 @@ bool BlockComp::fit(bool verbose) {
 			MSG("\n");
 		}
 
+		// detect convergence
 		largeDiff = false;
 
 		// check betas for convergence
@@ -387,10 +443,11 @@ bool BlockComp::fit(bool verbose) {
 
 	}
 
+	// clean up
 	free(prevBeta);
 	free(prevThetaT);
 
-	// we have a fit...
+	// we have a fit!
 	mHasFit = true;
 
 	return(true);
@@ -499,6 +556,7 @@ MSG("TODO\n");
 
 void BlockComp::updateTheta() {
 	int i,j,k,l,c;
+	int iH,jH;       // used to fill hessian properly when params fixed
 	int pair;
 	int blk1,blk2;
 	int N_in_pair;
@@ -507,6 +565,11 @@ void BlockComp::updateTheta() {
 	double q[mMaxPair];
 	double u[mNtheta];
 	bool   diag;
+
+	if (mNfixed == mNtheta) {
+		// all are fixed
+		return;
+	}
 
 	// transform theta to real line
 	for (i = 0; i < mNtheta; i++) { mThetaT[i] =  mTheta[i]; }
@@ -574,6 +637,11 @@ MSG("TODO\n");
 
 			// fill in W and u
 			for (i = 0; i < mNtheta; i++) {
+				if (mFixed[i]) {
+					// this parameter is fixed, so skip these operations
+					continue;
+				}
+
 				// get partial derivatives
 				mCov->partials(mTheta_P, &diag, i, mTheta, mThetaT, mNB[blk1], mWithinD[blk1], mNB[blk2], mWithinD[blk2], mBetweenD[pair]);
 
@@ -613,9 +681,15 @@ MSG("TODO\n");
 			}
 
 			// compute hessian contributions
+			iH = 0;
 			for (i = 0; i < mNtheta; i++) {
+				if (mFixed[i]) { continue; }
+
+				jH = iH;
 				for (j = i; j < mNtheta; j++) {
-					c = symi(i,j);
+					if (mFixed[j]) { continue; }
+
+					c = symi(iH,jH);
 
 					// add in diagonal elements of W[i] x W[j]
 					for (k = 0; k < N_in_pair; k++) {
@@ -624,24 +698,37 @@ MSG("TODO\n");
 						}
 					}
 
+					jH++;
 				}
+
+				iH++;
 			}
 
 		} // end pair
 
 		// hessian elements should be scaled by 1/2
-		for (i = 0; i < symi(0, mNtheta); i++) {
+		for (i = 0; i < symi(0, mNtheta-mNfixed); i++) {
 			mTheta_H[i] *= 0.5;
 		}
 
 		// invert hessian
-		chol2inv(mNtheta, mTheta_H);
+		chol2inv(mNtheta-mNfixed, mTheta_H);
 
 		// update theta
+		iH = 0;
 		for (i = 0; i < mNtheta; i++) {
+			if (mFixed[i]) { continue; }
+
+			jH = 0;
 			for (j = 0; j < mNtheta; j++) {
-				mThetaT[i] += mTheta_H[symi(i,j)] * u[j];
+				if (mFixed[j]) { continue; }
+
+				mThetaT[i] += mTheta_H[symi(iH,jH)] * u[j];
+
+				jH++;
 			}
+
+			iH++;
 		}
 
 /*
@@ -740,7 +827,11 @@ return(0);
 
 	//double inits[] = {0.25, 0.25, 0.5};
 	//double inits[] = {0.5, 0.7243848, 0.2105263};
-	blk.setInits(3, test_inits);
+	bool fixed[] = {true, true, true};
+	double vals[] = {0.5, 0.4, 0.15};
+
+	blk.setInits(test_inits);
+	blk.setFixed(fixed, vals);
 	blk.fit(true);
 
 	return(0);

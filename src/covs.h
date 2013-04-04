@@ -33,14 +33,8 @@ public:
 	// transform params from real line
 	virtual void transformFromReal(double *theta) = 0;
 
-	// set parameters to be fixed
-	void setFixed(int n, int *which, double *values);
-
 protected:
 	int     mNparams;
-	int     mNfixed;
-	int    *mFixed;
-	double *mFixedValues;
 };
 
 // exponential covariance

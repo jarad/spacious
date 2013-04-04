@@ -13,13 +13,15 @@ public:
 	enum LikForm { Full, Pair, Block, IndBlock };
 	enum CovType { Exp, Matern };
 
+	// should we try to conserve memory during fit?
 	void setConserveMemory(bool conserve) { mConsMem = conserve; }
 
 	void initPointers();
 	void setLikForm(LikForm form);
 	void setCovType(CovType type);
 	void setData(int n, double *y, double *S, int nblocks, int *B, int p, double *X, int npairs, int *neighbors);
-	void setInits(int ntheta, double *theta);
+	void setInits(double *theta);
+	void setFixed(bool *fixed, double *values);
 
 	// fit model with Fisher scoring
 	bool fit(bool verbose);
@@ -68,10 +70,13 @@ private:
 	double mIterTol;     // control parameters
 	int    mMaxIter;
 
-	double *mThetaInits; // initial values
-	double *mBeta;       // model parametes
+	double *mThetaInits;  // initial values for covariance params
+	int     mNfixed;      // number fixed
+	bool   *mFixed;       // which are fixed?
+	double *mFixedVals;   // values of fixed params
+	double *mBeta;        // model parametes
 	double *mTheta;
-	double *mThetaT;     // transformed model parametes
+	double *mThetaT;      // transformed model parametes
 
 	// update vars
 	double *mSigma;
