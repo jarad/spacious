@@ -366,7 +366,10 @@ bool BlockComp::fit(bool verbose) {
 	mBeta_b = (double *)malloc(sizeof(double)*mNbeta);
 
 	// get initial beta
-	updateBeta();
+	if (!updateBeta()) {
+		MSG("Unable to get initial values for beta\n");
+		return(false);
+	}
 
 	// prepare variables for updating theta
 	if (mTheta_W != NULL) {
@@ -394,10 +397,18 @@ bool BlockComp::fit(bool verbose) {
 		for (i = 0; i < mNtheta; i++) { prevThetaT[i] = mThetaT[i]; }
 
 		// update covariance params
-		updateTheta();
+		if (!updateTheta()) {
+			MSG("Unable to update theta at iteration %d\n", mIters+1);
+			free(prevBeta); free(prevThetaT);
+			return(false);
+		}
 
 		// update mean params
-		updateBeta();
+		if (!updateBeta()) {
+			MSG("Unable to update beta at iteration %d\n", mIters+1);
+			free(prevBeta); free(prevThetaT);
+			return(false);
+		}
 
 		if (verbose) {
 			// display iteration information
@@ -454,19 +465,19 @@ bool BlockComp::fit(bool verbose) {
 }
 
 // update mean parameters
-void BlockComp::updateBeta() {
+bool BlockComp::updateBeta() {
 	int i,j,k,l;
 	int selem,icol,jcol;
 	int pair;
 	int blk1,blk2;
 	int N_in_pair;
 
+	// initialize A and b
+	for (i = 0; i < symi(0,mNbeta); i++) { mBeta_A[i] = 0; }
+	for (i = 0; i < mNbeta;         i++) { mBeta_b[i] = 0; }
+
 	if (mLikForm == Block) {
 		// update beta with block composite likelihood
-
-		// initialize A and b
-		for (i = 0; i < symi(0,mNbeta); i++) { mBeta_A[i] = 0; }
-		for (i = 0; i < mNbeta;         i++) { mBeta_b[i] = 0; }
 
 		for (pair = 0; pair < mNpairs; pair++) {
 			blk1 = mNeighbors[pair];
@@ -481,11 +492,14 @@ void BlockComp::updateBeta() {
 
 				// fill in distance
 				// fill in covariance
-MSG("TODO\n");
+MSG("TODO: updateBeta(): mConsMem=true, mLikForm=Block\n"); return(false);
 			}
 
 			// invert Sigma
-			chol2inv(N_in_pair, mSigma);
+			if (chol2inv(N_in_pair, mSigma)) {
+				MSG("updateBeta(): unable to invert Sigma\n");
+				return(false);
+			}
 
 			// add contribution to A and b
 			for (i = 0; i < mNbeta; i++) {
@@ -532,29 +546,72 @@ MSG("TODO\n");
 
 		} // end pair
 
-		// compute beta
-		chol2inv(mNbeta, mBeta_A);
-		for (i = 0; i < mNbeta; i++) {
-			mBeta[i] = 0;
-
-			for (j = 0; j < mNbeta; j++) {
-				mBeta[i] += mBeta_A[symi(i,j)] * mBeta_b[j];
-			}
-		}
 	} else if (mLikForm == IndBlock) {
 		// update beta using independent blocks
-MSG("TODO\n");
+MSG("TODO: updateBeta(): mLikForm=IndBlock\n"); return(false);
 	} else if (mLikForm == Pair) {
 		// update beta using pairwise composite likelihood
-MSG("TODO\n");
+MSG("TODO: updateBeta(): mLikForm=Pair\n"); return(false);
 	} else if (mLikForm == Full) {
 		// update beta using full likelihood
-MSG("TODO\n");
+
+		if (!mConsMem) {
+			// fill in covariance matrix between these two blocks
+			mCov->compute(mSigma, mTheta, mN, mWithinD[0]);
+		} else {
+			// we're conserving memory
+
+			// fill in distance
+			// fill in covariance
+MSG("TODO: updateBeta(): mConsMem=true, mLikForm=Full\n"); return(false);
+		}
+
+		// invert Sigma
+		if (chol2inv(mN, mSigma)) {
+			MSG("updateBeta(): unable to invert Sigma\n");
+			return(false);
+		}
+
+		// add contribution to A and b
+		for (i = 0; i < mNbeta; i++) {
+			icol = i*mN;
+
+			for (j = i; j < mNbeta; j++) {
+				selem = symi(i,j);
+				jcol  = j*mN;
+
+				for (k = 0; k < mN; k++) {
+					for (l = 0; l < mN; l++) {
+						mBeta_A[selem] += mX[l + icol] * mSigma[symi(l,k)] * mX[k + jcol];
+						if (i == j) {
+							mBeta_b[i] += mX[l + icol] * mSigma[symi(l,k)] * mY[k];
+						}
+					}
+				}
+
+			}
+		}
+
 	}
 
+	// compute beta
+	if (chol2inv(mNbeta, mBeta_A)) {
+		MSG("updateBeta(): unable to invert A\n");
+		return(false);
+	}
+
+	for (i = 0; i < mNbeta; i++) {
+		mBeta[i] = 0;
+
+		for (j = 0; j < mNbeta; j++) {
+			mBeta[i] += mBeta_A[symi(i,j)] * mBeta_b[j];
+		}
+	}
+
+	return(true);
 }
 
-void BlockComp::updateTheta() {
+bool BlockComp::updateTheta() {
 	int i,j,k,l,c;
 	int iH,jH;       // used to fill hessian properly when params fixed
 	int pair;
@@ -567,20 +624,20 @@ void BlockComp::updateTheta() {
 	bool   diag;
 
 	if (mNfixed == mNtheta) {
-		// all are fixed
-		return;
+		// all are fixed -- no updates needed
+		return(true);
 	}
 
 	// transform theta to real line
 	for (i = 0; i < mNtheta; i++) { mThetaT[i] =  mTheta[i]; }
 	mCov->transformToReal(mThetaT);
 
+	// initialize u and H
+	for (i = 0; i < mNtheta;         i++) { u[i] = 0; }
+	for (i = 0; i < symi(0,mNtheta); i++) { mTheta_H[i] = 0; }
+
 	if (mLikForm == Block) {
 		// update theta with block composite likelihood
-
-		// initialize u and H
-		for (i = 0; i < mNtheta;         i++) { u[i] = 0; }
-		for (i = 0; i < symi(0,mNtheta); i++) { mTheta_H[i] = 0; }
 
 		for (pair = 0; pair < mNpairs; pair++) {
 			blk1 = mNeighbors[pair];
@@ -595,11 +652,14 @@ void BlockComp::updateTheta() {
 
 				// fill in distance
 				// fill in covariance
-MSG("TODO\n");
+MSG("TODO: updateTheta(): mConsMem=true, mLikForm=Block\n"); return(false);
 			}
 
 			// invert Sigma
-			chol2inv(N_in_pair, mSigma);
+			if (chol2inv(N_in_pair, mSigma)) {
+				MSG("updateTheta(): Unable to invert Sigma\n");
+				return(false);
+			}
 
 			// initialize residuals and q
 			for (i = 0; i < N_in_pair; i++) {
@@ -711,19 +771,101 @@ MSG("TODO\n");
 			mTheta_H[i] *= 0.5;
 		}
 
-		// invert hessian
-		chol2inv(mNtheta-mNfixed, mTheta_H);
+	} else if (mLikForm == IndBlock) {
+		// update theta using independent blocks
+MSG("TODO: updateTheta(): mLikForm=IndBlock\n"); return(false);
+	} else if (mLikForm == Pair) {
+		// update theta using pairwise composite likelihood
+MSG("TODO: updateTheta(): mLikForm=Pair\n"); return(false);
+	} else if (mLikForm == Full) {
+		// update theta using full likelihood
 
-		// update theta
+		// note that updateBeta() already computes inv(Sigma) used here
+
+		// initialize residuals and q
+		for (i = 0; i < mN; i++) {
+			resids[i] = 0;
+			q[i]      = 0;
+		}
+
+		// compute resids = y - X'b
+		for (i = 0; i < mN; i++) {
+			for (j = 0; j < mNbeta; j++) {
+				resids[i] += mX[i + j*mN] * mBeta[j];
+			}
+
+			resids[i] = mY[i] - resids[i];
+		}
+
+		// compute q = inv(Sigma) x resids
+		for (i = 0; i < mN; i++) {
+			for (j = 0; j < mN; j++) {
+				q[i] += mSigma[symi(i,j)] * resids[j];
+			}
+		}
+
+		// fill in W and u
+		for (i = 0; i < mNtheta; i++) {
+			if (mFixed[i]) {
+				// this parameter is fixed, so skip these operations
+				continue;
+			}
+
+			// get partial derivatives
+			mCov->partials(mTheta_P, &diag, i, mTheta, mThetaT, mN, mWithinD[0]);
+
+			// initialize W[i]
+			for (j = 0; j < pow(mN, 2); j++) { mTheta_W[i][j] = 0; }
+
+			// compute inv(Sigma) x P
+			if (diag) {
+				// take advantage of P being diagonal
+				for (j = 0; j < mN; j++) {
+					for (k = 0; k < mN; k++) {
+						mTheta_W[i][j + k*mN] = mSigma[symi(j,k)] * mTheta_P[symi(k,k)];
+					}
+				}
+			} else {
+				for (j = 0; j < mN; j++) {
+					for (k = 0; k < mN; k++) {
+						for (l = 0; l < mN; l++) {
+							mTheta_W[i][j + k*mN] += mSigma[symi(j,l)] * mTheta_P[symi(l,k)];
+						}
+					}
+				}
+			}
+
+			// fill in u
+			for (j = 0; j < mN; j++) {
+				u[i] -= 0.5*mTheta_W[i][j+j*mN];
+			}
+
+			for (j = 0; j < mN; j++) {
+				u[i] += 0.5*mTheta_P[symi(j,j)] * q[j] * q[j];
+				for (k = j+1; k < mN; k++) {
+					u[i] += mTheta_P[symi(j,k)] * q[j] * q[k];
+				}
+			}
+
+		}
+
+		// compute hessian
 		iH = 0;
 		for (i = 0; i < mNtheta; i++) {
 			if (mFixed[i]) { continue; }
 
-			jH = 0;
-			for (j = 0; j < mNtheta; j++) {
+			jH = iH;
+			for (j = i; j < mNtheta; j++) {
 				if (mFixed[j]) { continue; }
 
-				mThetaT[i] += mTheta_H[symi(iH,jH)] * u[j];
+				c = symi(iH,jH);
+
+				// add in diagonal elements of W[i] x W[j]
+				for (k = 0; k < mN; k++) {
+					for (l = 0; l < mN; l++) {
+						mTheta_H[c] += mTheta_W[i][k+l*mN] * mTheta_W[j][l+k*mN];
+					}
+				}
 
 				jH++;
 			}
@@ -731,26 +873,41 @@ MSG("TODO\n");
 			iH++;
 		}
 
-/*
-MSG("u="); for (i = 0; i < mNtheta; i++) { MSG("%.3f ", u[i]); } MSG("\n");
-disp_sym(mTheta_H, 0, mNtheta);
-MSG("thetaT=%.2f %.2f %.2f\n", mThetaT[0], mThetaT[1], mThetaT[2]);
-*/
+		// hessian elements should be scaled by 1/2
+		for (i = 0; i < symi(0, mNtheta-mNfixed); i++) {
+			mTheta_H[i] *= 0.5;
+		}
 
-	} else if (mLikForm == IndBlock) {
-		// update theta using independent blocks
-MSG("TODO\n");
-	} else if (mLikForm == Pair) {
-		// update theta using pairwise composite likelihood
-MSG("TODO\n");
-	} else if (mLikForm == Full) {
-		// update theta using full likelihood
-MSG("TODO\n");
+	}
+
+	// invert hessian
+	if (chol2inv(mNtheta-mNfixed, mTheta_H)) {
+		MSG("updateTheta(): Unable to invert H\n");
+		return(false);
+	}
+
+	// update theta
+	iH = 0;
+	for (i = 0; i < mNtheta; i++) {
+		if (mFixed[i]) { continue; }
+
+		jH = 0;
+		for (j = 0; j < mNtheta; j++) {
+			if (mFixed[j]) { continue; }
+
+			mThetaT[i] += mTheta_H[symi(iH,jH)] * u[j];
+
+			jH++;
+		}
+
+		iH++;
 	}
 
 	// transform thetaT to original scale
 	for (i = 0; i < mNtheta; i++) { mTheta[i] =  mThetaT[i]; }
 	mCov->transformFromReal(mTheta);
+
+	return(true);
 }
 
 #ifndef BLK
@@ -827,12 +984,14 @@ return(0);
 
 	//double inits[] = {0.25, 0.25, 0.5};
 	//double inits[] = {0.5, 0.7243848, 0.2105263};
-	bool fixed[] = {true, true, true};
+	bool fixed[] = {false, false, false};
 	double vals[] = {0.5, 0.4, 0.15};
 
 	blk.setInits(test_inits);
 	blk.setFixed(fixed, vals);
-	blk.fit(true);
+	if (!blk.fit(true)) {
+		MSG("Error with fit.\n");
+	}
 
 	return(0);
 }

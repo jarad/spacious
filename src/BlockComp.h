@@ -36,8 +36,8 @@ public:
 private:
 	void cleanup();
 
-	void updateBeta();
-	void updateTheta();
+	bool updateBeta();
+	bool updateTheta();
 
 	int     mN;          // number of observations
 	double *mY;          // response

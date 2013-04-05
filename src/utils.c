@@ -5,20 +5,25 @@
 
 // chol2inv: compute inverse of n by n pd symm mat A using Cholesky
 // assumes A is stored in packed upper triangular format
-void chol2inv(int n, double *A) {
+int chol2inv(int n, double *A) {
 	char uplo = 'U';
 	int  info;
 
+	// compute factorization
 	dpptrf_(&uplo, &n, A, &info);
 	if (info) {
-		MSG("Error with chol(A): info = %d\n", info);
+//		MSG("Error with chol(A): info = %d\n", info);
+		return(info);
 	}
 
 	// complete inverse
 	dpptri_(&uplo, &n, A, &info);
 	if (info) {
-		MSG("Error with inv(chol(A)): info = %d\n", info);
+//		MSG("Error with inv(chol(A)): info = %d\n", info);
+		return(info);
 	}
+
+	return(0);
 }
 
 // display triangle of a symmetric matrix from row/col lo to hi

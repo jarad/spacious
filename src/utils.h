@@ -30,7 +30,7 @@ inline int symi(int a, int b) {
 }
 
 // function definitions
-void chol2inv(int n, double *A);
+int chol2inv(int n, double *A);
 void disp_sym(double *mat, int lo, int hi);
 
 #endif
