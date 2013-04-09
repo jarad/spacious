@@ -910,6 +910,18 @@ MSG("TODO: updateTheta(): mLikForm=Pair\n"); return(false);
 	return(true);
 }
 
+void BlockComp::getBeta(double *beta) {
+	for (int i = 0; i < mNbeta; i++) {
+		beta[i] = mBeta[i];
+	}
+}
+
+void BlockComp::getTheta(double *theta) {
+	for (int i = 0; i < mNtheta; i++) {
+		theta[i] = mTheta[i];
+	}
+}
+
 #ifndef BLK
 
 // test the estimation on the data in test_data.h
@@ -995,4 +1007,5 @@ return(0);
 
 	return(0);
 }
+
 #endif

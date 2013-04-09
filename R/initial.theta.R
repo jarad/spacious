@@ -15,5 +15,5 @@
   
   smoothness <- 0.5
 
-  return(c(nugget, partial.sill, 1/range, smoothness))
+  return(c(nugget, partial.sill, range, smoothness))
 }

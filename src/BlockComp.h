@@ -33,6 +33,10 @@ public:
 	void computeStdErrs();
 	void computeCLIC();
 
+	// extract items of interest
+	void getBeta(double *beta);
+	void getTheta(double *theta);
+
 private:
 	void cleanup();
 

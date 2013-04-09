@@ -5,7 +5,8 @@
 	B, neighbors,
 	fixed=list(smoothness=0.5),             # fixed parameters
 	blocks=list(type="cluster"),            # blocking style
-	verbose=FALSE, tol=1e-3, maxIter=100    # algorithm control params
+	verbose=FALSE, tol=1e-3, maxIter=100,   # algorithm control params
+	engine="C"                              # use C or R implementation?
 ) {
 
 	if (missing(S)) {
@@ -41,15 +42,15 @@
 		theta.fixed <- rep(FALSE, R)
 
 		if (!is.null(fixed$nugget)) {
-			theta[1] <- log(fixed$nugget)
+			theta[1] <- fixed$nugget
 			theta.fixed[1] <- TRUE
 		}
 		if (!is.null(fixed$psill)) {
-			theta[2] <- log(fixed$psill)
+			theta[2] <- fixed$psill
 			theta.fixed[2] <- TRUE
 		}
 		if (!is.null(fixed$range)) {
-			theta[3] <- -log(fixed$range)
+			theta[3] <- fixed$range
 			theta.fixed[3] <- TRUE
 		}
 	} else if (cov == "matern") {
@@ -59,19 +60,19 @@
 		theta.fixed <- rep(FALSE, R)
 
 		if (!is.null(fixed$nugget)) {
-			theta[1] <- log(fixed$nugget)
+			theta[1] <- fixed$nugget
 			theta.fixed[1] <- TRUE
 		}
 		if (!is.null(fixed$psill)) {
-			theta[2] <- log(fixed$psill)
+			theta[2] <- fixed$psill
 			theta.fixed[2] <- TRUE
 		}
 		if (!is.null(fixed$range)) {
-			theta[3] <- -log(fixed$range)
+			theta[3] <- fixed$range
 			theta.fixed[3] <- TRUE
 		}
 		if (!is.null(fixed$smooth)) {
-			theta[4] <- log(fixed$smooth)
+			theta[4] <- fixed$smooth
 			theta.fixed[4] <- TRUE
 		} else {
 			stop("Smoothness must be fixed")
@@ -84,38 +85,41 @@
 		# compute some initial values
 		which.inits <- which(theta.fixed[1:3] == FALSE)
 		if (length(which.inits) > 0) {
-			theta[which.inits] <- log( (initial.theta(y, S))[which.inits] )
+			theta[which.inits] <- (initial.theta(y, S))[which.inits]
 		}
 	}
 
 	if (!missing(cov.inits)) {
 		# set initial values from user
 		if (!is.null(cov.inits$nugget)) {
-			theta[1] <- log(cov.inits$nugget)
+			theta[1] <- cov.inits$nugget
 		}
 		if (!is.null(cov.inits$psill)) {
-			theta[2] <- log(cov.inits$psill)
+			theta[2] <- cov.inits$psill
 		}
 		if (!is.null(cov.inits$range)) {
-			theta[3] <- -log(cov.inits$range)
+			theta[3] <- cov.inits$range
 		}
 		if (cov == "matern" && !is.null(cov.inits$smooth)) {
-			theta[4] <- log(cov.inits$smooth)
+			theta[4] <- cov.inits$smooth
 		}
 	}
 
 	if (verbose) {
-		cat("Initial values for theta:",exp(theta),"\n")
+		cat("Initial values for theta:",theta,"\n")
 	}
 
 	# create grid
 	grid <- c()
+	lik_form <- "block"     # type of likelihood we want to use
+
 	if (!missing(B) && !missing(neighbors)) {
 		# we have block memberships and neighbors, so don't do anything else
 	} else if (blocks$type == "full" || (!is.null(blocks$nblocks) && blocks$nblocks <= 2) ) {
 		# full likelihood
 		B         <- rep(1,n)
 		neighbors <- matrix( c(1, 1), nrow=1 )
+		lik_form <- "full"
 	} else if (blocks$type == "cluster") {
 		if (is.null(blocks$nblocks)) {
 			# deafult to one block for each 50 obs
@@ -132,6 +136,7 @@
 		neighbors <- do.call("rbind", sapply(1:(n-1), function(i) {
 			cbind(i,(i+1):n)
 		}))
+		lik_form <- "pair"
 	} else if (blocks$type=="regular") {
 		if (is.null(blocks$nblocks)) {
 			# deafult to one block for each 50 obs
@@ -192,8 +197,23 @@
 
 	# do fit
 	t1 <- proc.time()
-	fit <- spacious.fit(y, X, S, blocks$nblocks, B, neighbors, cov, n, p, R, theta, theta.fixed,
-		verbose, tol, maxIter)
+	if (engine == "C") {
+		fit <- .C(spacious_fit, y=as.double(y), X=as.double(X), S=as.double(S), B=as.integer(B-1), neighbors=as.integer(neighbors-1),
+		                        n=as.integer(n), p=as.integer(p), nblocks=as.integer(blocks$nblocks), npairs=as.integer(nrow(neighbors)),
+		                        lik_form=as.character(lik_form), cov=as.character(cov),
+		                        theta=as.double(theta), theta_fixed=as.logical(theta.fixed), beta=as.double(rep(0, p)),
+		                        verbose=as.logical(verbose), tol=as.double(tol), max_iter=as.integer(maxIter),
+		                        NAOK=FALSE
+		)
+
+		fit$se.beta  <- rep(NA, p)
+		fit$se.theta <- rep(NA, R)
+	} else if (engine == "R") {
+		fit <- spacious.fit(y, X, S, blocks$nblocks, B, neighbors, cov, n, p, R, theta, theta.fixed,
+			verbose, tol, maxIter)
+	} else {
+		stop(paste0("Unknown engine ",engine,"\n"))
+	}
 	t <- proc.time()-t1
 
 	# construct output fit

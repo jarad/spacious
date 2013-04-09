@@ -7,3 +7,6 @@ S3method(print, summary.spacious)
 
 # functions to export
 export(spacious)
+
+# C functions
+useDynLib(spacious, spacious_fit)
