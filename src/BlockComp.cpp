@@ -83,6 +83,7 @@ void BlockComp::initPointers() {
 #ifdef PTHREAD
 	mThreads      = NULL;
 	mThreadStatus = NULL;
+	mThreadWork   = NULL;
 	mBeta_A_t     = NULL;
 	mBeta_b_t     = NULL;
 #endif
@@ -149,6 +150,12 @@ void BlockComp::cleanup() {
 	free(mThreads);
 	free(mThreadStatus);
 	if (mNthreads > 1) {
+		if (mThreadWork != NULL) {
+			for (i = 0; i < mNthreads; i++) {
+				free(mThreadWork[i]);
+			}
+		}
+		free(mThreadWork);
 
 		if (mBeta_A_t != NULL && mBeta_b_t != NULL) {
 			for (i = 0; i < mNthreads; i++) {
@@ -438,6 +445,19 @@ bool BlockComp::fit(bool verbose) {
 		mThreads      = (pthread_t *)malloc(sizeof(pthread_t)*mNthreads);
 		mThreadStatus = (bool *)malloc(sizeof(bool)*mNthreads);
 
+		// allocate thread work
+		if (mThreadWork != NULL) {
+			for (i = 0; i < mNthreads; i++) {
+				free(mThreadWork[i]);
+			}
+		}
+		free(mThreadWork);
+
+		mThreadWork = (pair_update_t **)malloc(sizeof(pair_update_t *)*mNthreads);
+		for (i = 0; i < mNthreads; i++) {
+			mThreadWork[i] = (pair_update_t *)malloc(sizeof(pair_update_t)*mNthreads);
+		}
+
 		// allocate update variables specific to each thread
 		if (mBeta_A_t != NULL && mBeta_b_t != NULL) {
 			for (i = 0; i < mNthreads; i++) {
@@ -583,18 +603,13 @@ bool BlockComp::updateBeta() {
 		} else {
 			// use threads to process each block pair
 
-			pair_update_t **mThreadWork;
-			mThreadWork = (pair_update_t **)malloc(sizeof(pair_update_t *)*mNthreads);
-			for (i = 0; i < mNthreads; i++) {
-				mThreadWork[i] = (pair_update_t *)malloc(sizeof(pair_update_t)*mNthreads);
-			}
-
 			// setup mutex
 			pthread_mutex_init(&mPairMutex, NULL);
 			mPair_t    = 0;
 
 			// create threads
 			for (i = 0; i < mNthreads; i++) {
+				mThreadStatus[i]      = true;
 				mThreadWork[i]->id    = i;
 				mThreadWork[i]->bc    = this;
 
@@ -613,10 +628,13 @@ bool BlockComp::updateBeta() {
 			// destroy mutex
 			pthread_mutex_destroy(&mPairMutex);
 
+			// did we have any errors?
 			for (i = 0; i < mNthreads; i++) {
-				free(mThreadWork[i]);
+				if (!mThreadStatus[i]) {
+					MSG("updateBeta(): Error processing thread %d.\n", i);
+					return(false);
+				}
 			}
-			free(mThreadWork);
 
 			// combine results from each thread
 			for (j = 0; j < mNthreads; j++) {
@@ -788,16 +806,14 @@ void *BlockComp::updateBetaThread(void *work) {
 			break;
 		}
 
-//		MSG("[%d] processing pair %d\n", id, pair);
-
 		if (!bc->updateBetaPair(pair, bc->mSigma[id], bc->mBeta_A_t[id], bc->mBeta_b_t[id])) {
 			// error updating this pair
-			w->status = false;
+			bc->mThreadStatus[id] = false;
 			return(NULL);
 		}
 	}
 
-	w->status = true;
+	bc->mThreadStatus[id] = true;
 	return(NULL);
 }
 #endif

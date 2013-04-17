@@ -8,7 +8,6 @@
 typedef struct {
 	int              id;
 	class BlockComp *bc;
-	double           status;
 } pair_update_t;
 #endif
 
@@ -110,8 +109,9 @@ private:
 	static void *updateBetaThread(void *work);
 
 	// variables for threading
-	pthread_t *mThreads;
-	bool      *mThreadStatus;
+	pthread_t      *mThreads;
+	bool           *mThreadStatus;
+	pair_update_t **mThreadWork;
 
 	// thread specific update vars
 	double **mBeta_A_t;
