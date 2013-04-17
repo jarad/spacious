@@ -54,6 +54,7 @@ private:
 	bool updateBeta();
 	bool updateBetaPair(int pair, double *Sigma, double *A, double *b);
 	bool updateTheta();
+	bool updateThetaPair(int pair, double *Sigma, double **W, double *H, double *P, double *resids, double *q, double *u);
 
 	int     mNthreads;   // number of processing threads
 
@@ -107,6 +108,7 @@ private:
 
 #ifdef PTHREAD
 	static void *updateBetaThread(void *work);
+	static void *updateThetaThread(void *work);
 
 	// variables for threading
 	pthread_t      *mThreads;
@@ -116,6 +118,11 @@ private:
 	// thread specific update vars
 	double **mBeta_A_t;
 	double **mBeta_b_t;
+
+	double ***mTheta_W_t;
+	double  **mTheta_H_t;
+	double  **mTheta_P_t;
+	double  **mTheta_u_t;
 
 	pthread_mutex_t mPairMutex;
 	int             mPair_t;

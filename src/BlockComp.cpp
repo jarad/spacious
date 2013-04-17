@@ -84,8 +84,14 @@ void BlockComp::initPointers() {
 	mThreads      = NULL;
 	mThreadStatus = NULL;
 	mThreadWork   = NULL;
+
 	mBeta_A_t     = NULL;
 	mBeta_b_t     = NULL;
+
+	mTheta_W_t    = NULL;
+	mTheta_H_t    = NULL;
+	mTheta_P_t    = NULL;
+	mTheta_u_t    = NULL;
 #endif
 }
 
@@ -149,6 +155,7 @@ void BlockComp::cleanup() {
 #ifdef PTHREAD
 	free(mThreads);
 	free(mThreadStatus);
+
 	if (mNthreads > 1) {
 		if (mThreadWork != NULL) {
 			for (i = 0; i < mNthreads; i++) {
@@ -166,6 +173,23 @@ void BlockComp::cleanup() {
 
 		free(mBeta_A_t);
 		free(mBeta_b_t);
+
+		if (mTheta_W_t != NULL && mTheta_H_t != NULL && mTheta_P_t && mTheta_u_t) {
+			for (i = 0; i < mNthreads; i++) {
+				for (int j = 0; j < mNtheta; j++) {
+					free(mTheta_W_t[i][j]);
+				}
+				free(mTheta_W_t[i]);
+				free(mTheta_H_t[i]);
+				free(mTheta_P_t[i]);
+				free(mTheta_u_t[i]);
+			}
+		}
+
+		free(mTheta_W_t);
+		free(mTheta_H_t);
+		free(mTheta_P_t);
+		free(mTheta_u_t);
 	}
 #endif
 
@@ -436,11 +460,29 @@ bool BlockComp::fit(bool verbose) {
 	mBeta_A = (double *)malloc(sizeof(double)*symi(0,mNbeta));
 	mBeta_b = (double *)malloc(sizeof(double)*mNbeta);
 
+	// prepare variables for updating theta
+	if (mTheta_W != NULL) {
+		for (i = 0; i < mNtheta; i++) {
+			free(mTheta_W[i]);
+		}
+		free(mTheta_W);
+	}
+	free(mTheta_H);
+	free(mTheta_P);
+	mTheta_W = (double **)malloc(sizeof(double *)*mNtheta);
+	mTheta_H = (double *)malloc(sizeof(double)*symi(0,mNtheta));
+	mTheta_P = (double *)malloc(sizeof(double)*symi(0,mMaxPair));
+	for (i = 0; i < mNtheta; i++) {
+		mTheta_W[i] = (double *)malloc(sizeof(double)*pow(mMaxPair,2));
+	}
+
 #ifdef PTHREAD
 	free(mThreads);
 	free(mThreadStatus);
 
 	if (mNthreads > 1) {
+		MSG("TODO: order block pairs for threading!\n");
+
 		// allocate space for threads
 		mThreads      = (pthread_t *)malloc(sizeof(pthread_t)*mNthreads);
 		mThreadStatus = (bool *)malloc(sizeof(bool)*mNthreads);
@@ -474,29 +516,47 @@ bool BlockComp::fit(bool verbose) {
 			mBeta_A_t[i] = (double *)malloc(sizeof(double)*symi(0,mNbeta));
 			mBeta_b_t[i] = (double *)malloc(sizeof(double)*mNbeta);
 		}
+
+		if (mTheta_W_t != NULL && mTheta_H_t != NULL && mTheta_P_t && mTheta_u_t) {
+			for (i = 0; i < mNthreads; i++) {
+				for (int j = 0; j < mNtheta; j++) {
+					free(mTheta_W_t[i][j]);
+				}
+				free(mTheta_W_t[i]);
+				free(mTheta_H_t[i]);
+				free(mTheta_P_t[i]);
+				free(mTheta_u_t[i]);
+			}
+		}
+
+		free(mTheta_W_t);
+		free(mTheta_H_t);
+		free(mTheta_P_t);
+		free(mTheta_u_t);
+
+		mTheta_W_t = (double ***)malloc(sizeof(double **)*mNthreads);
+		mTheta_H_t = (double **)malloc(sizeof(double *)*mNthreads);
+		mTheta_P_t = (double **)malloc(sizeof(double *)*mNthreads);
+		mTheta_u_t = (double **)malloc(sizeof(double *)*mNthreads);
+		for (i = 0; i < mNthreads; i++) {
+			mTheta_W_t[i] = (double **)malloc(sizeof(double)*mNtheta);
+			for (int j = 0; j < mNtheta; j++) {
+				mTheta_W_t[i][j] = (double *)malloc(sizeof(double)*pow(mMaxPair,2));
+			}
+
+			mTheta_H_t[i] = (double *)malloc(sizeof(double)*symi(0,mNtheta));
+			mTheta_P_t[i] = (double *)malloc(sizeof(double)*symi(0,mMaxPair));
+			mTheta_u_t[i] = (double *)malloc(sizeof(double)*mNtheta);
+		}
+
 	}
+
 #endif
 
 	// get initial beta
 	if (!updateBeta()) {
 		MSG("Unable to get initial values for beta\n");
 		return(false);
-	}
-
-	// prepare variables for updating theta
-	if (mTheta_W != NULL) {
-		for (i = 0; i < mNtheta; i++) {
-			free(mTheta_W[i]);
-		}
-		free(mTheta_W);
-	}
-	free(mTheta_H);
-	free(mTheta_P);
-	mTheta_W = (double **)malloc(sizeof(double *)*mNtheta);
-	mTheta_H = (double *)malloc(sizeof(double)*symi(0,mNtheta));
-	mTheta_P = (double *)malloc(sizeof(double)*symi(0,mMaxPair));
-	for (i = 0; i < mNtheta; i++) {
-		mTheta_W[i] = (double *)malloc(sizeof(double)*pow(mMaxPair,2));
 	}
 
 	// vectors to hold previous parameter values
@@ -646,10 +706,12 @@ bool BlockComp::updateBeta() {
 
 	} else if (mLikForm == IndBlock) {
 		// update beta using independent blocks
-MSG("TODO: updateBeta(): mLikForm=IndBlock\n"); return(false);
+		MSG("TODO: updateBeta(): mLikForm=IndBlock\n");
+		return(false);
 	} else if (mLikForm == Pair) {
 		// update beta using pairwise composite likelihood
-MSG("TODO: updateBeta(): mLikForm=Pair\n"); return(false);
+		MSG("TODO: updateBeta(): mLikForm=Pair\n");
+		return(false);
 	} else if (mLikForm == Full) {
 		// update beta using full likelihood
 
@@ -661,7 +723,8 @@ MSG("TODO: updateBeta(): mLikForm=Pair\n"); return(false);
 
 			// fill in distance
 			// fill in covariance
-MSG("TODO: updateBeta(): mConsMem=true, mLikForm=Full\n"); return(false);
+			MSG("TODO: updateBeta(): mConsMem=true, mLikForm=Full\n");
+			return(false);
 		}
 
 		// invert Sigma
@@ -726,7 +789,8 @@ bool BlockComp::updateBetaPair(int pair, double *Sigma, double *A, double *b) {
 
 		// fill in distance
 		// fill in covariance
-MSG("TODO: updateBetaPair(): mConsMem=true, mLikForm=Block\n"); return(false);
+		MSG("TODO: updateBetaPair(): mConsMem=true, mLikForm=Block\n");
+		return(false);
 	}
 
 	// invert Sigma
@@ -791,8 +855,8 @@ void *BlockComp::updateBetaThread(void *work) {
 	int pair;
 
 	// initialize A and b for this thread
-	for (i = 0; i < symi(0,bc->mNbeta); i++) { bc->mBeta_A_t[w->id][i] = 0; }
-	for (i = 0; i < bc->mNbeta;         i++) { bc->mBeta_b_t[w->id][i] = 0; }
+	for (i = 0; i < symi(0,bc->mNbeta); i++) { bc->mBeta_A_t[id][i] = 0; }
+	for (i = 0; i < bc->mNbeta;         i++) { bc->mBeta_b_t[id][i] = 0; }
 
 	// process blocks
 	while (1) {
@@ -822,8 +886,6 @@ bool BlockComp::updateTheta() {
 	int i,j,k,l,c;
 	int iH,jH;       // used to fill hessian properly when params fixed
 	int pair;
-	int blk1,blk2;
-	int N_in_pair;
 
 	double resids[mMaxPair];
 	double q[mMaxPair];
@@ -846,144 +908,77 @@ bool BlockComp::updateTheta() {
 	if (mLikForm == Block) {
 		// update theta with block composite likelihood
 
-		for (pair = 0; pair < mNpairs; pair++) {
-			blk1 = mNeighbors[pair];
-			blk2 = mNeighbors[pair+mNpairs];
-			N_in_pair = mNB[blk1] + mNB[blk2];
-
-			if (!mConsMem) {
-				// fill in covariance matrix between these two blocks
-				mCov->compute(mSigma[0], mTheta, mNB[blk1], mWithinD[blk1], mNB[blk2], mWithinD[blk2], mBetweenD[pair]);
-			} else {
-				// we're conserving memory
-
-				// fill in distance
-				// fill in covariance
-MSG("TODO: updateTheta(): mConsMem=true, mLikForm=Block\n"); return(false);
-			}
-
-			// invert Sigma
-			if (chol2inv(N_in_pair, mSigma[0])) {
-				MSG("updateTheta(): Unable to invert Sigma\n");
-				return(false);
-			}
-
-			// initialize residuals and q
-			for (i = 0; i < N_in_pair; i++) {
-				resids[i] = 0;
-				q[i]      = 0;
-			}
-
-			// compute resids = y - X'b
-			for (i = 0; i < mNB[blk1]; i++) {   // block 1
-				c = mWhichB[blk1][i];
-
-				for (j = 0; j < mNbeta; j++) {
-					resids[i] += mX[c + j*mN] * mBeta[j];
-				}
-
-				resids[i] = mY[c] - resids[i];
-			}
-
-			for (i = 0; i < mNB[blk2]; i++) {   // block 2
-				c = mWhichB[blk2][i];
-
-				for (j = 0; j < mNbeta; j++) {
-					resids[i+mNB[blk1]] += mX[c + j*mN] * mBeta[j];
-				}
-
-				resids[i+mNB[blk1]] = mY[c] - resids[i+mNB[blk1]];
-			}
-
-			// compute q = inv(Sigma) x resids
-			for (i = 0; i < N_in_pair; i++) {
-				for (j = 0; j < N_in_pair; j++) {
-					q[i] += mSigma[0][symi(i,j)] * resids[j];
+#ifdef PTHREAD
+		if (mNthreads <= 1) {
+#endif
+			for (pair = 0; pair < mNpairs; pair++) {
+				if (!updateBetaPair(pair, mSigma[0], mBeta_A, mBeta_b)) {
+					// error updating this pair
+					return(false);
 				}
 			}
 
-			// fill in W and u
-			for (i = 0; i < mNtheta; i++) {
-				if (mFixed[i]) {
-					// this parameter is fixed, so skip these operations
-					continue;
+			// process each block pair in order
+			for (pair = 0; pair < mNpairs; pair++) {
+				if (!updateThetaPair(pair, mSigma[0], mTheta_W, mTheta_H, mTheta_P, resids, q, u)) {
+						// error updating this pair
+						return(false);
 				}
+			}
 
-				// get partial derivatives
-				mCov->partials(mTheta_P, &diag, i, mTheta, mThetaT, mNB[blk1], mWithinD[blk1], mNB[blk2], mWithinD[blk2], mBetweenD[pair]);
+#ifdef PTHREAD
+		} else {
+			// use threads to process each block pair
 
-				// initialize W[i]
-				for (j = 0; j < pow(N_in_pair, 2); j++) { mTheta_W[i][j] = 0; }
+			// setup mutex
+			pthread_mutex_init(&mPairMutex, NULL);
+			mPair_t    = 0;
 
-				// compute inv(Sigma) x P
-				if (diag) {
-					// take advantage of P being diagonal
-					for (j = 0; j < N_in_pair; j++) {
-						for (k = 0; k < N_in_pair; k++) {
-							mTheta_W[i][j + k*N_in_pair] = mSigma[0][symi(j,k)] * mTheta_P[symi(k,k)];
-						}
-					}
-				} else {
-					for (j = 0; j < N_in_pair; j++) {
-						for (k = 0; k < N_in_pair; k++) {
-							for (l = 0; l < N_in_pair; l++) {
-								mTheta_W[i][j + k*N_in_pair] += mSigma[0][symi(j,l)] * mTheta_P[symi(l,k)];
-							}
-						}
-					}
-				}
+			// create threads
+			for (i = 0; i < mNthreads; i++) {
+				mThreadStatus[i]      = true;
+				mThreadWork[i]->id    = i;
+				mThreadWork[i]->bc    = this;
 
-				// fill in u
-				for (j = 0; j < N_in_pair; j++) {
-					u[i] -= 0.5*mTheta_W[i][j+j*N_in_pair];
-				}
-
-				for (j = 0; j < N_in_pair; j++) {
-					u[i] += 0.5*mTheta_P[symi(j,j)] * q[j] * q[j];
-					for (k = j+1; k < N_in_pair; k++) {
-						u[i] += mTheta_P[symi(j,k)] * q[j] * q[k];
-					}
-				}
+				pthread_create(&mThreads[i], NULL,
+					&BlockComp::updateThetaThread,
+					(void *)mThreadWork[i]
+				);
 
 			}
 
-			// compute hessian contributions
-			iH = 0;
-			for (i = 0; i < mNtheta; i++) {
-				if (mFixed[i]) { continue; }
-
-				jH = iH;
-				for (j = i; j < mNtheta; j++) {
-					if (mFixed[j]) { continue; }
-
-					c = symi(iH,jH);
-
-					// add in diagonal elements of W[i] x W[j]
-					for (k = 0; k < N_in_pair; k++) {
-						for (l = 0; l < N_in_pair; l++) {
-							mTheta_H[c] += mTheta_W[i][k+l*N_in_pair] * mTheta_W[j][l+k*N_in_pair];
-						}
-					}
-
-					jH++;
-				}
-
-				iH++;
+			// wait for all threads to complete
+			for (i = 0; i < mNthreads; i++) {
+				pthread_join(mThreads[i], 0);
 			}
 
-		} // end pair
+			// destroy mutex
+			pthread_mutex_destroy(&mPairMutex);
 
-		// hessian elements should be scaled by 1/2
-		for (i = 0; i < symi(0, mNtheta-mNfixed); i++) {
-			mTheta_H[i] *= 0.5;
+			// did we have any errors?
+			for (i = 0; i < mNthreads; i++) {
+				if (!mThreadStatus[i]) {
+					MSG("updateTheta(): Error processing thread %d.\n", i);
+					return(false);
+				}
+			}
+
+			// combine results from each thread
+			for (j = 0; j < mNthreads; j++) {
+				for (i = 0; i < symi(0, mNtheta-mNfixed); i++) { mTheta_H[i] += mTheta_H_t[j][i]; }
+				for (i = 0; i < mNtheta;                  i++) { u[i]        += mTheta_u_t[j][i]; }
+			}
 		}
+#endif
 
 	} else if (mLikForm == IndBlock) {
 		// update theta using independent blocks
-MSG("TODO: updateTheta(): mLikForm=IndBlock\n"); return(false);
+		MSG("TODO: updateTheta(): mLikForm=IndBlock\n");
+		return(false);
 	} else if (mLikForm == Pair) {
 		// update theta using pairwise composite likelihood
-MSG("TODO: updateTheta(): mLikForm=Pair\n"); return(false);
+		MSG("TODO: updateTheta(): mLikForm=Pair\n");
+		return(false);
 	} else if (mLikForm == Full) {
 		// update theta using full likelihood
 
@@ -1080,11 +1075,11 @@ MSG("TODO: updateTheta(): mLikForm=Pair\n"); return(false);
 			iH++;
 		}
 
-		// hessian elements should be scaled by 1/2
-		for (i = 0; i < symi(0, mNtheta-mNfixed); i++) {
-			mTheta_H[i] *= 0.5;
-		}
+	}
 
+	// hessian elements should be scaled by 1/2
+	for (i = 0; i < symi(0, mNtheta-mNfixed); i++) {
+		mTheta_H[i] *= 0.5;
 	}
 
 	// invert hessian
@@ -1117,6 +1112,180 @@ MSG("TODO: updateTheta(): mLikForm=Pair\n"); return(false);
 	return(true);
 }
 
+bool BlockComp::updateThetaPair(int pair, double *Sigma, double **W, double *H, double *P, double *resids, double *q, double *u) {
+	int blk1 = mNeighbors[pair];
+	int blk2 = mNeighbors[pair+mNpairs];
+	int N_in_pair = mNB[blk1] + mNB[blk2];
+
+	int i,j,k,l;
+	int iH,jH;       // used to fill hessian properly when params fixed
+	int c;
+	bool diag;
+
+	if (!mConsMem) {
+		// fill in covariance matrix between these two blocks
+		mCov->compute(Sigma, mTheta, mNB[blk1], mWithinD[blk1], mNB[blk2], mWithinD[blk2], mBetweenD[pair]);
+	} else {
+		// we're conserving memory
+
+		// fill in distance
+		// fill in covariance
+		MSG("TODO: updateThetaPair(): mConsMem=true, mLikForm=Block\n");
+		return(false);
+	}
+
+	// invert Sigma
+	if (chol2inv(N_in_pair, Sigma)) {
+		MSG("updateThetaPair(): Unable to invert Sigma\n");
+		return(false);
+	}
+
+	// initialize residuals and q
+	for (i = 0; i < N_in_pair; i++) {
+		resids[i] = 0;
+		q[i]      = 0;
+	}
+
+	// compute resids = y - X'b
+	for (i = 0; i < mNB[blk1]; i++) {   // block 1
+		c = mWhichB[blk1][i];
+
+		for (j = 0; j < mNbeta; j++) {
+			resids[i] += mX[c + j*mN] * mBeta[j];
+		}
+
+		resids[i] = mY[c] - resids[i];
+	}
+
+	for (i = 0; i < mNB[blk2]; i++) {   // block 2
+		c = mWhichB[blk2][i];
+
+		for (j = 0; j < mNbeta; j++) {
+			resids[i+mNB[blk1]] += mX[c + j*mN] * mBeta[j];
+		}
+
+		resids[i+mNB[blk1]] = mY[c] - resids[i+mNB[blk1]];
+	}
+
+	// compute q = inv(Sigma) x resids
+	for (i = 0; i < N_in_pair; i++) {
+		for (j = 0; j < N_in_pair; j++) {
+			q[i] += Sigma[symi(i,j)] * resids[j];
+		}
+	}
+
+	// fill in W and u
+	for (i = 0; i < mNtheta; i++) {
+		if (mFixed[i]) {
+			// this parameter is fixed, so skip these operations
+			continue;
+		}
+
+		// get partial derivatives
+		mCov->partials(P, &diag, i, mTheta, mThetaT, mNB[blk1], mWithinD[blk1], mNB[blk2], mWithinD[blk2], mBetweenD[pair]);
+
+		// initialize W[i]
+		for (j = 0; j < pow(N_in_pair, 2); j++) { W[i][j] = 0; }
+
+		// compute inv(Sigma) x P
+		if (diag) {
+			// take advantage of P being diagonal
+			for (j = 0; j < N_in_pair; j++) {
+				for (k = 0; k < N_in_pair; k++) {
+					W[i][j + k*N_in_pair] = Sigma[symi(j,k)] * P[symi(k,k)];
+				}
+			}
+		} else {
+			for (j = 0; j < N_in_pair; j++) {
+				for (k = 0; k < N_in_pair; k++) {
+					for (l = 0; l < N_in_pair; l++) {
+						W[i][j + k*N_in_pair] += Sigma[symi(j,l)] * P[symi(l,k)];
+					}
+				}
+			}
+		}
+
+		// fill in u
+		for (j = 0; j < N_in_pair; j++) {
+			u[i] -= 0.5*W[i][j+j*N_in_pair];
+		}
+
+		for (j = 0; j < N_in_pair; j++) {
+			u[i] += 0.5*P[symi(j,j)] * q[j] * q[j];
+			for (k = j+1; k < N_in_pair; k++) {
+				u[i] += P[symi(j,k)] * q[j] * q[k];
+			}
+		}
+
+	}
+
+	// compute hessian contributions
+	iH = 0;
+	for (i = 0; i < mNtheta; i++) {
+		if (mFixed[i]) { continue; }
+
+		jH = iH;
+		for (j = i; j < mNtheta; j++) {
+			if (mFixed[j]) { continue; }
+
+			c = symi(iH,jH);
+
+			// add in diagonal elements of W[i] x W[j]
+			for (k = 0; k < N_in_pair; k++) {
+				for (l = 0; l < N_in_pair; l++) {
+					H[c] += W[i][k+l*N_in_pair] * W[j][l+k*N_in_pair];
+				}
+			}
+
+			jH++;
+		}
+
+		iH++;
+	}
+
+	return(true);
+}
+
+#ifdef PTHREAD
+void *BlockComp::updateThetaThread(void *work) {
+	pair_update_t *w = (pair_update_t *)work;
+	int            id = w->id;
+	BlockComp     *bc = w->bc;
+
+	int i;
+	int pair;
+	double resids[bc->mMaxPair];
+	double q[bc->mMaxPair];
+
+	// initialize u and H for this thread
+	for (i = 0; i < bc->mNtheta;         i++) { bc->mTheta_u_t[id][i] = 0; }
+	for (i = 0; i < symi(0,bc->mNtheta); i++) { bc->mTheta_H_t[id][i] = 0; }
+
+	// process blocks
+	while (1) {
+		// get pair to process
+		pthread_mutex_lock(&(bc->mPairMutex));
+		pair = bc->mPair_t++;
+		pthread_mutex_unlock(&(bc->mPairMutex));
+
+		if (pair >= bc->mNpairs) {
+			// no more to process
+			break;
+		}
+
+		if (!bc->updateThetaPair(pair, bc->mSigma[id], bc->mTheta_W_t[id], bc->mTheta_H_t[id],
+		                         bc->mTheta_P_t[id], resids, q, bc->mTheta_u_t[id])) {
+			// error updating this pair
+			bc->mThreadStatus[id] = false;
+			return(NULL);
+		}
+	}
+
+	bc->mThreadStatus[id] = true;
+	return(NULL);
+}
+#endif
+
 void BlockComp::getBeta(double *beta) {
 	for (int i = 0; i < mNbeta; i++) {
 		beta[i] = mBeta[i];
@@ -1137,52 +1306,6 @@ void BlockComp::getTheta(double *theta) {
 
 int main(void) {
 	BlockComp blk(4);
-
-/*
-	CovExp    cov;
-	int    i,j;
-	double theta[] = { log(1), log(1), log(1/0.2) };
-
-	double test_D[ symi(0, test_n) ];
-	double test_Sigma[ symi(0,test_n) ];
-
-	// compute distances
-	for (i = 0; i < test_n-1; i++) {
-		test_D[ symi(i,i) ] = 0;
-
-		for (j = i+1; j < test_n; j++) {
-			test_D[ symi(i,j) ] = sqrt( pow(test_S[i]-test_S[j],2) + pow(test_S[i+test_n]-test_S[j+test_n],2) );
-		}
-	}
-
-	// fill test_Sigma
-	cov.compute(test_Sigma, test_n, theta, test_D);
-
-MSG("%.2f, %.2f, %.2f\n", test_D[symi(0,0)], test_D[symi(0,1)], test_D[symi(1,1)]);
-MSG("%.2f, %.2f, %.2f\n", test_Sigma[symi(0,0)], test_Sigma[symi(0,1)], test_Sigma[symi(1,1)]);
-
-	// compute Chol(test_Sigma)
-	char uplo = 'U';
-	int info;
-
-	dpptrf_(&uplo, &test_n, test_Sigma, &info);
-	if (info) {
-		MSG("Error with chol(): info = %d\n", info);
-	}
-
-MSG("info = %d\n", info);
-MSG("%.2f, %.2f, %.2f\n", test_Sigma[symi(0,0)], test_Sigma[symi(0,1)], test_Sigma[symi(1,1)]);
-
-	// invert Chol(test_Sigma)
-	dpptri_(&uplo, &test_n, test_Sigma, &info);
-	if (info) {
-		MSG("Error with chol invert(): info = %d\n", info);
-	}
-
-MSG("info = %d\n", info);
-MSG("%.2f, %.2f, %.2f\n", test_Sigma[symi(0,0)], test_Sigma[symi(0,1)], test_Sigma[symi(1,1)]);
-return(0);
-*/
 
 	// start blocks at 0
 	int i;
