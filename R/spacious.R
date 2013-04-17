@@ -6,6 +6,7 @@
 	fixed=list(smoothness=0.5),             # fixed parameters
 	blocks=list(type="cluster"),            # blocking style
 	verbose=FALSE, tol=1e-3, maxIter=100,   # algorithm control params
+	nthreads=1,
 	engine="C"                              # use C or R implementation?
 ) {
 
@@ -198,11 +199,17 @@
 	# do fit
 	t1 <- proc.time()
 	if (engine == "C") {
+		if (nthreads <= 0) {
+			warning(paste0("nthreads specified as ",nthreads,". Using 1 instead."))
+			nthreads <- 1
+		}
+
 		fit <- .C(spacious_fit, y=as.double(y), X=as.double(X), S=as.double(S), B=as.integer(B-1), neighbors=as.integer(neighbors-1),
 		                        n=as.integer(n), p=as.integer(p), nblocks=as.integer(blocks$nblocks), npairs=as.integer(nrow(neighbors)),
 		                        lik_form=as.character(lik_form), cov=as.character(cov),
 		                        theta=as.double(theta), theta_fixed=as.logical(theta.fixed), beta=as.double(rep(0, p)),
 		                        verbose=as.logical(verbose), tol=as.double(tol), max_iter=as.integer(maxIter),
+		                        nthreads=as.integer(nthreads),
 		                        NAOK=FALSE
 		)
 

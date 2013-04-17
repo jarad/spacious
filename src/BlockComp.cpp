@@ -1,6 +1,5 @@
 // Estimates block composite models with Fisher scoring
 #include <stdio.h>
-#include <unistd.h>
 
 #ifdef PTHREAD
 #include <pthread.h>
@@ -423,7 +422,7 @@ bool BlockComp::fit(bool verbose) {
 	bool largeDiff;
 
 #ifdef DEBUG
-	MSG("Starting fit()...\n");
+	MSG("Starting fit() (# of threads=%d)...\n", mNthreads);
 #endif
 
 	// make sure we have initial values
@@ -497,7 +496,7 @@ bool BlockComp::fit(bool verbose) {
 
 		mThreadWork = (pair_update_t **)malloc(sizeof(pair_update_t *)*mNthreads);
 		for (i = 0; i < mNthreads; i++) {
-			mThreadWork[i] = (pair_update_t *)malloc(sizeof(pair_update_t)*mNthreads);
+			mThreadWork[i] = (pair_update_t *)malloc(sizeof(pair_update_t));
 		}
 
 		// allocate update variables specific to each thread
@@ -911,12 +910,6 @@ bool BlockComp::updateTheta() {
 #ifdef PTHREAD
 		if (mNthreads <= 1) {
 #endif
-			for (pair = 0; pair < mNpairs; pair++) {
-				if (!updateBetaPair(pair, mSigma[0], mBeta_A, mBeta_b)) {
-					// error updating this pair
-					return(false);
-				}
-			}
 
 			// process each block pair in order
 			for (pair = 0; pair < mNpairs; pair++) {

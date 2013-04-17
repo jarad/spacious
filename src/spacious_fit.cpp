@@ -11,9 +11,10 @@ void spacious_fit(double *y, double *X, double *S, int *B, int *neighbors,
                   int *n, int *p, int *nblocks, int *npairs,
                   char **lik_form, char **cov,
                   double *theta, bool *theta_fixed, double *beta,
-                  bool *verbose, double *tol, int *max_iter) {
+                  bool *verbose, double *tol, int *max_iter,
+                  int *nthreads) {
 
-	BlockComp blk;
+	BlockComp blk(nthreads[0]);
 
 	// set likelihood form
 	if (strcmp(lik_form[0], "block") == 0) {
