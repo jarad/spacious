@@ -4,9 +4,18 @@
 
 #include "covs.h"
 
+#ifdef PTHREAD
+typedef struct {
+	int              id;
+	class BlockComp *bc;
+	double           status;
+} pair_update_t;
+#endif
+
 class BlockComp {
 public:
 	BlockComp();
+	BlockComp(int nthreads);
 	~BlockComp();
 
 	// types of likelihoods we can fit
@@ -16,6 +25,7 @@ public:
 	// should we try to conserve memory during fit?
 	void setConserveMemory(bool conserve) { mConsMem = conserve; }
 
+	void init(int nthreads);
 	void initPointers();
 	void setLikForm(LikForm form);
 	void setCovType(CovType type);
@@ -40,8 +50,13 @@ public:
 private:
 	void cleanup();
 
+	void setThreads(int nthreads);
+
 	bool updateBeta();
+	bool updateBetaPair(int pair, double *Sigma, double *A, double *b);
 	bool updateTheta();
+
+	int     mNthreads;   // number of processing threads
 
 	int     mN;          // number of observations
 	double *mY;          // response
@@ -83,13 +98,28 @@ private:
 	double *mThetaT;      // transformed model parametes
 
 	// update vars
-	double *mSigma;
-	double *mBeta_A;
-	double *mBeta_b;
+	double **mSigma;
+	double  *mBeta_A;
+	double  *mBeta_b;
 
 	double **mTheta_W;
 	double  *mTheta_H;
 	double  *mTheta_P;
+
+#ifdef PTHREAD
+	static void *updateBetaThread(void *work);
+
+	// variables for threading
+	pthread_t *mThreads;
+	bool      *mThreadStatus;
+
+	// thread specific update vars
+	double **mBeta_A_t;
+	double **mBeta_b_t;
+
+	pthread_mutex_t mPairMutex;
+	int             mPair_t;
+#endif
 };
 
 #endif

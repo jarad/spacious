@@ -1,5 +1,10 @@
 // Estimates block composite models with Fisher scoring
 #include <stdio.h>
+#include <unistd.h>
+
+#ifdef PTHREAD
+#include <pthread.h>
+#endif
 
 #include <R.h>
 #include <R_ext/Lapack.h>
@@ -10,7 +15,31 @@
 
 // constructor
 BlockComp::BlockComp() {
+	init(1);
+}
+
+BlockComp::BlockComp(int nthreads) {
+#ifdef PTHREAD
+	init(nthreads);
+#else
+	init(1);
+#endif
+}
+
+BlockComp::~BlockComp() {
+	cleanup();
+
+	// only clear these to end
+	delete mCov;
+	free(mThetaInits);
+	free(mFixed);
+	free(mFixedVals);
+}
+
+void BlockComp::init(int nthreads) {
 	initPointers();
+
+	setThreads(nthreads);
 
 	// only initalize these pointers to start
 	mCov        = NULL;
@@ -32,16 +61,6 @@ BlockComp::BlockComp() {
 	mMaxIter = 100;
 }
 
-BlockComp::~BlockComp() {
-	cleanup();
-
-	// only clear these to end
-	delete mCov;
-	free(mThetaInits);
-	free(mFixed);
-	free(mFixedVals);
-}
-
 // initialize pointers
 void BlockComp::initPointers() {
 	mNB         = NULL;
@@ -60,6 +79,13 @@ void BlockComp::initPointers() {
 	mTheta_W    = NULL;
 	mTheta_H    = NULL;
 	mTheta_P    = NULL;
+
+#ifdef PTHREAD
+	mThreads      = NULL;
+	mThreadStatus = NULL;
+	mBeta_A_t     = NULL;
+	mBeta_b_t     = NULL;
+#endif
 }
 
 // free's allocated data
@@ -99,7 +125,14 @@ void BlockComp::cleanup() {
 	free(mTheta);
 	free(mThetaT);
 
-	free(mSigma);
+	if (mSigma != NULL) {
+		for (i = 0; i < mNthreads; i++) {
+			free(mSigma[i]);
+		}
+
+		free(mSigma);
+	}
+
 	free(mBeta_A);
 	free(mBeta_b);
 
@@ -112,7 +145,29 @@ void BlockComp::cleanup() {
 	free(mTheta_H);
 	free(mTheta_P);
 
+#ifdef PTHREAD
+	free(mThreads);
+	free(mThreadStatus);
+	if (mNthreads > 1) {
+
+		if (mBeta_A_t != NULL && mBeta_b_t != NULL) {
+			for (i = 0; i < mNthreads; i++) {
+				free(mBeta_A_t[i]);
+				free(mBeta_b_t[i]);
+			}
+		}
+
+		free(mBeta_A_t);
+		free(mBeta_b_t);
+	}
+#endif
+
 	initPointers();
+}
+
+void BlockComp::setThreads(int nthreads) {
+	// number of processing threads
+	mNthreads = nthreads;
 }
 
 void BlockComp::setLikForm(LikForm form) {
@@ -121,6 +176,11 @@ void BlockComp::setLikForm(LikForm form) {
 	cleanup();
 
 	mLikForm = form;
+
+	if (mLikForm == Full) {
+		// make sure we only use one thread
+		setThreads(1);
+	}
 }
 
 void BlockComp::setCovType(CovType type) {
@@ -220,8 +280,12 @@ void BlockComp::setData(int n, double *y, double *S, int nblocks, int *B, int p,
 	}
 
 	// allocate largest Sigma we need
-	mSigma = (double *)malloc(sizeof(double)*symi(0,mMaxPair));
-	for (i = 0; i < symi(0,mMaxPair); i++) { mSigma[i] = 0; }
+	mSigma = (double **)malloc(sizeof(double *)*mNthreads);
+	for (i = 0; i < mNthreads; i++) {
+		mSigma[i] = (double *)malloc(sizeof(double)*symi(0,mMaxPair));
+
+		for (j = 0; j < symi(0,mMaxPair); j++) { mSigma[i][j] = 0; }
+	}
 
 #ifdef DEBUG
 	MSG("max pair=%d with length %d\n", mMaxPair, symi(0, mMaxPair));
@@ -365,6 +429,34 @@ bool BlockComp::fit(bool verbose) {
 	mBeta_A = (double *)malloc(sizeof(double)*symi(0,mNbeta));
 	mBeta_b = (double *)malloc(sizeof(double)*mNbeta);
 
+#ifdef PTHREAD
+	free(mThreads);
+	free(mThreadStatus);
+
+	if (mNthreads > 1) {
+		// allocate space for threads
+		mThreads      = (pthread_t *)malloc(sizeof(pthread_t)*mNthreads);
+		mThreadStatus = (bool *)malloc(sizeof(bool)*mNthreads);
+
+		// allocate update variables specific to each thread
+		if (mBeta_A_t != NULL && mBeta_b_t != NULL) {
+			for (i = 0; i < mNthreads; i++) {
+				free(mBeta_A_t[i]);
+				free(mBeta_b_t[i]);
+			}
+		}
+		free(mBeta_A_t);
+		free(mBeta_b_t);
+
+		mBeta_A_t = (double **)malloc(sizeof(double *)*mNthreads);
+		mBeta_b_t = (double **)malloc(sizeof(double *)*mNthreads);
+		for (i = 0; i < mNthreads; i++) {
+			mBeta_A_t[i] = (double *)malloc(sizeof(double)*symi(0,mNbeta));
+			mBeta_b_t[i] = (double *)malloc(sizeof(double)*mNbeta);
+		}
+	}
+#endif
+
 	// get initial beta
 	if (!updateBeta()) {
 		MSG("Unable to get initial values for beta\n");
@@ -469,8 +561,6 @@ bool BlockComp::updateBeta() {
 	int i,j,k,l;
 	int selem,icol,jcol;
 	int pair;
-	int blk1,blk2;
-	int N_in_pair;
 
 	// initialize A and b
 	for (i = 0; i < symi(0,mNbeta); i++) { mBeta_A[i] = 0; }
@@ -479,72 +569,62 @@ bool BlockComp::updateBeta() {
 	if (mLikForm == Block) {
 		// update beta with block composite likelihood
 
-		for (pair = 0; pair < mNpairs; pair++) {
-			blk1 = mNeighbors[pair];
-			blk2 = mNeighbors[pair+mNpairs];
-			N_in_pair = mNB[blk1] + mNB[blk2];
-
-			if (!mConsMem) {
-				// fill in covariance matrix between these two blocks
-				mCov->compute(mSigma, mTheta, mNB[blk1], mWithinD[blk1], mNB[blk2], mWithinD[blk2], mBetweenD[pair]);
-			} else {
-				// we're conserving memory
-
-				// fill in distance
-				// fill in covariance
-MSG("TODO: updateBeta(): mConsMem=true, mLikForm=Block\n"); return(false);
-			}
-
-			// invert Sigma
-			if (chol2inv(N_in_pair, mSigma)) {
-				MSG("updateBeta(): unable to invert Sigma\n");
-				return(false);
-			}
-
-			// add contribution to A and b
-			for (i = 0; i < mNbeta; i++) {
-				icol = i*mN;
-
-				for (j = i; j < mNbeta; j++) {
-					selem = symi(i,j);
-					jcol  = j*mN;
-
-					for (k = 0; k < mNB[blk1]; k++) {     // block 1...
-						for (l = 0; l < mNB[blk1]; l++) {   // with block 1
-							mBeta_A[selem] += mX[mWhichB[blk1][l] + icol] * mSigma[symi(l,k)] * mX[mWhichB[blk1][k] + jcol];
-							if (i == j) {
-								mBeta_b[i] += mX[mWhichB[blk1][l] + icol] * mSigma[symi(l,k)] * mY[mWhichB[blk1][k]];
-							}
-						}
-
-						for (l = 0; l < mNB[blk2]; l++) {   // with block 2
-							mBeta_A[selem] += mX[mWhichB[blk2][l] + icol] * mSigma[symi(l+mNB[blk1],k)] * mX[mWhichB[blk1][k] + jcol];
-							if (i == j) {
-								mBeta_b[i] += mX[mWhichB[blk2][l] + icol] * mSigma[symi(l+mNB[blk1],k)] * mY[mWhichB[blk1][k]];
-							}
-						}
-					}
-
-					for (k = 0; k < mNB[blk2]; k++) {     // block 2...
-						for (l = 0; l < mNB[blk1]; l++) {   // with block 1
-							mBeta_A[selem] += mX[mWhichB[blk1][l] + icol] * mSigma[symi(l,k+mNB[blk1])] * mX[mWhichB[blk2][k] + jcol];
-							if (i == j) {
-								mBeta_b[i] += mX[mWhichB[blk1][l] + icol] * mSigma[symi(l,k+mNB[blk1])] * mY[mWhichB[blk2][k]];
-							}
-						}
-
-						for (l = 0; l < mNB[blk2]; l++) {   // with block 2
-							mBeta_A[selem] += mX[mWhichB[blk2][l] + icol] * mSigma[symi(l+mNB[blk1],k+mNB[blk1])] * mX[mWhichB[blk2][k] + jcol];
-							if (i == j) {
-								mBeta_b[i] += mX[mWhichB[blk2][l] + icol] * mSigma[symi(l+mNB[blk1],k+mNB[blk1])] * mY[mWhichB[blk2][k]];
-							}
-						}
-					}
-
+#ifdef PTHREAD
+		if (mNthreads <= 1) {
+#endif
+			// process each block pair in order
+			for (pair = 0; pair < mNpairs; pair++) {
+				if (!updateBetaPair(pair, mSigma[0], mBeta_A, mBeta_b)) {
+					// error updating this pair
+					return(false);
 				}
 			}
+#ifdef PTHREAD
+		} else {
+			// use threads to process each block pair
 
-		} // end pair
+			pair_update_t **mThreadWork;
+			mThreadWork = (pair_update_t **)malloc(sizeof(pair_update_t *)*mNthreads);
+			for (i = 0; i < mNthreads; i++) {
+				mThreadWork[i] = (pair_update_t *)malloc(sizeof(pair_update_t)*mNthreads);
+			}
+
+			// setup mutex
+			pthread_mutex_init(&mPairMutex, NULL);
+			mPair_t    = 0;
+
+			// create threads
+			for (i = 0; i < mNthreads; i++) {
+				mThreadWork[i]->id    = i;
+				mThreadWork[i]->bc    = this;
+
+				pthread_create(&mThreads[i], NULL,
+					&BlockComp::updateBetaThread,
+					(void *)mThreadWork[i]
+				);
+
+			}
+
+			// wait for all threads to complete
+			for (i = 0; i < mNthreads; i++) {
+				pthread_join(mThreads[i], 0);
+			}
+
+			// destroy mutex
+			pthread_mutex_destroy(&mPairMutex);
+
+			for (i = 0; i < mNthreads; i++) {
+				free(mThreadWork[i]);
+			}
+			free(mThreadWork);
+
+			// combine results from each thread
+			for (j = 0; j < mNthreads; j++) {
+				for (i = 0; i < symi(0,mNbeta); i++) { mBeta_A[i] += mBeta_A_t[j][i]; }
+				for (i = 0; i < mNbeta;         i++) { mBeta_b[i] += mBeta_b_t[j][i]; }
+			}
+		}
+#endif
 
 	} else if (mLikForm == IndBlock) {
 		// update beta using independent blocks
@@ -557,7 +637,7 @@ MSG("TODO: updateBeta(): mLikForm=Pair\n"); return(false);
 
 		if (!mConsMem) {
 			// fill in covariance matrix between these two blocks
-			mCov->compute(mSigma, mTheta, mN, mWithinD[0]);
+			mCov->compute(mSigma[0], mTheta, mN, mWithinD[0]);
 		} else {
 			// we're conserving memory
 
@@ -567,7 +647,7 @@ MSG("TODO: updateBeta(): mConsMem=true, mLikForm=Full\n"); return(false);
 		}
 
 		// invert Sigma
-		if (chol2inv(mN, mSigma)) {
+		if (chol2inv(mN, mSigma[0])) {
 			MSG("updateBeta(): unable to invert Sigma\n");
 			return(false);
 		}
@@ -582,9 +662,9 @@ MSG("TODO: updateBeta(): mConsMem=true, mLikForm=Full\n"); return(false);
 
 				for (k = 0; k < mN; k++) {
 					for (l = 0; l < mN; l++) {
-						mBeta_A[selem] += mX[l + icol] * mSigma[symi(l,k)] * mX[k + jcol];
+						mBeta_A[selem] += mX[l + icol] * mSigma[0][symi(l,k)] * mX[k + jcol];
 						if (i == j) {
-							mBeta_b[i] += mX[l + icol] * mSigma[symi(l,k)] * mY[k];
+							mBeta_b[i] += mX[l + icol] * mSigma[0][symi(l,k)] * mY[k];
 						}
 					}
 				}
@@ -592,7 +672,7 @@ MSG("TODO: updateBeta(): mConsMem=true, mLikForm=Full\n"); return(false);
 			}
 		}
 
-	}
+	} // end different likelihood forms
 
 	// compute beta
 	if (chol2inv(mNbeta, mBeta_A)) {
@@ -610,6 +690,117 @@ MSG("TODO: updateBeta(): mConsMem=true, mLikForm=Full\n"); return(false);
 
 	return(true);
 }
+
+bool BlockComp::updateBetaPair(int pair, double *Sigma, double *A, double *b) {
+	// update specified pair of blocks
+	int i,j,k,l;
+	int selem,icol,jcol;
+
+	int blk1 = mNeighbors[pair];
+	int blk2 = mNeighbors[pair+mNpairs];
+	int N_in_pair = mNB[blk1] + mNB[blk2];
+
+	if (!mConsMem) {
+		// fill in covariance matrix between these two blocks
+		mCov->compute(Sigma, mTheta, mNB[blk1], mWithinD[blk1], mNB[blk2], mWithinD[blk2], mBetweenD[pair]);
+	} else {
+		// we're conserving memory
+
+		// fill in distance
+		// fill in covariance
+MSG("TODO: updateBetaPair(): mConsMem=true, mLikForm=Block\n"); return(false);
+	}
+
+	// invert Sigma
+	if (chol2inv(N_in_pair, Sigma)) {
+		MSG("updateBetaPair(): unable to invert Sigma\n");
+		return(false);
+	}
+
+	// add contribution to A and b
+	for (i = 0; i < mNbeta; i++) {
+		icol = i*mN;
+
+		for (j = i; j < mNbeta; j++) {
+			selem = symi(i,j);
+			jcol  = j*mN;
+
+			for (k = 0; k < mNB[blk1]; k++) {     // block 1...
+				for (l = 0; l < mNB[blk1]; l++) {   // with block 1
+					A[selem] += mX[mWhichB[blk1][l] + icol] * Sigma[symi(l,k)] * mX[mWhichB[blk1][k] + jcol];
+					if (i == j) {
+						b[i] += mX[mWhichB[blk1][l] + icol] * Sigma[symi(l,k)] * mY[mWhichB[blk1][k]];
+					}
+				}
+
+				for (l = 0; l < mNB[blk2]; l++) {   // with block 2
+					A[selem] += mX[mWhichB[blk2][l] + icol] * Sigma[symi(l+mNB[blk1],k)] * mX[mWhichB[blk1][k] + jcol];
+					if (i == j) {
+						b[i] += mX[mWhichB[blk2][l] + icol] * Sigma[symi(l+mNB[blk1],k)] * mY[mWhichB[blk1][k]];
+					}
+				}
+			}
+
+			for (k = 0; k < mNB[blk2]; k++) {     // block 2...
+				for (l = 0; l < mNB[blk1]; l++) {   // with block 1
+					A[selem] += mX[mWhichB[blk1][l] + icol] * Sigma[symi(l,k+mNB[blk1])] * mX[mWhichB[blk2][k] + jcol];
+					if (i == j) {
+						b[i] += mX[mWhichB[blk1][l] + icol] * Sigma[symi(l,k+mNB[blk1])] * mY[mWhichB[blk2][k]];
+					}
+				}
+
+				for (l = 0; l < mNB[blk2]; l++) {   // with block 2
+					A[selem] += mX[mWhichB[blk2][l] + icol] * Sigma[symi(l+mNB[blk1],k+mNB[blk1])] * mX[mWhichB[blk2][k] + jcol];
+					if (i == j) {
+						b[i] += mX[mWhichB[blk2][l] + icol] * Sigma[symi(l+mNB[blk1],k+mNB[blk1])] * mY[mWhichB[blk2][k]];
+					}
+				}
+			}
+
+		}
+	}
+
+	return(true);
+}
+
+#ifdef PTHREAD
+void *BlockComp::updateBetaThread(void *work) {
+	pair_update_t *w = (pair_update_t *)work;
+	int            id = w->id;
+	BlockComp     *bc = w->bc;
+
+	int i;
+	int pair;
+
+	// initialize A and b for this thread
+	for (i = 0; i < symi(0,bc->mNbeta); i++) { bc->mBeta_A_t[w->id][i] = 0; }
+	for (i = 0; i < bc->mNbeta;         i++) { bc->mBeta_b_t[w->id][i] = 0; }
+
+	// process blocks
+	while (1) {
+		// get pair to process
+		pthread_mutex_lock(&(bc->mPairMutex));
+		pair = bc->mPair_t++;
+		pthread_mutex_unlock(&(bc->mPairMutex));
+
+		if (pair >= bc->mNpairs) {
+			// no more to process
+			break;
+		}
+
+//		MSG("[%d] processing pair %d\n", id, pair);
+
+		if (!bc->updateBetaPair(pair, bc->mSigma[id], bc->mBeta_A_t[id], bc->mBeta_b_t[id])) {
+			// error updating this pair
+			w->status = false;
+			return(NULL);
+		}
+	}
+
+	w->status = true;
+	return(NULL);
+}
+#endif
 
 bool BlockComp::updateTheta() {
 	int i,j,k,l,c;
@@ -646,7 +837,7 @@ bool BlockComp::updateTheta() {
 
 			if (!mConsMem) {
 				// fill in covariance matrix between these two blocks
-				mCov->compute(mSigma, mTheta, mNB[blk1], mWithinD[blk1], mNB[blk2], mWithinD[blk2], mBetweenD[pair]);
+				mCov->compute(mSigma[0], mTheta, mNB[blk1], mWithinD[blk1], mNB[blk2], mWithinD[blk2], mBetweenD[pair]);
 			} else {
 				// we're conserving memory
 
@@ -656,7 +847,7 @@ MSG("TODO: updateTheta(): mConsMem=true, mLikForm=Block\n"); return(false);
 			}
 
 			// invert Sigma
-			if (chol2inv(N_in_pair, mSigma)) {
+			if (chol2inv(N_in_pair, mSigma[0])) {
 				MSG("updateTheta(): Unable to invert Sigma\n");
 				return(false);
 			}
@@ -691,7 +882,7 @@ MSG("TODO: updateTheta(): mConsMem=true, mLikForm=Block\n"); return(false);
 			// compute q = inv(Sigma) x resids
 			for (i = 0; i < N_in_pair; i++) {
 				for (j = 0; j < N_in_pair; j++) {
-					q[i] += mSigma[symi(i,j)] * resids[j];
+					q[i] += mSigma[0][symi(i,j)] * resids[j];
 				}
 			}
 
@@ -713,14 +904,14 @@ MSG("TODO: updateTheta(): mConsMem=true, mLikForm=Block\n"); return(false);
 					// take advantage of P being diagonal
 					for (j = 0; j < N_in_pair; j++) {
 						for (k = 0; k < N_in_pair; k++) {
-							mTheta_W[i][j + k*N_in_pair] = mSigma[symi(j,k)] * mTheta_P[symi(k,k)];
+							mTheta_W[i][j + k*N_in_pair] = mSigma[0][symi(j,k)] * mTheta_P[symi(k,k)];
 						}
 					}
 				} else {
 					for (j = 0; j < N_in_pair; j++) {
 						for (k = 0; k < N_in_pair; k++) {
 							for (l = 0; l < N_in_pair; l++) {
-								mTheta_W[i][j + k*N_in_pair] += mSigma[symi(j,l)] * mTheta_P[symi(l,k)];
+								mTheta_W[i][j + k*N_in_pair] += mSigma[0][symi(j,l)] * mTheta_P[symi(l,k)];
 							}
 						}
 					}
@@ -800,7 +991,7 @@ MSG("TODO: updateTheta(): mLikForm=Pair\n"); return(false);
 		// compute q = inv(Sigma) x resids
 		for (i = 0; i < mN; i++) {
 			for (j = 0; j < mN; j++) {
-				q[i] += mSigma[symi(i,j)] * resids[j];
+				q[i] += mSigma[0][symi(i,j)] * resids[j];
 			}
 		}
 
@@ -822,14 +1013,14 @@ MSG("TODO: updateTheta(): mLikForm=Pair\n"); return(false);
 				// take advantage of P being diagonal
 				for (j = 0; j < mN; j++) {
 					for (k = 0; k < mN; k++) {
-						mTheta_W[i][j + k*mN] = mSigma[symi(j,k)] * mTheta_P[symi(k,k)];
+						mTheta_W[i][j + k*mN] = mSigma[0][symi(j,k)] * mTheta_P[symi(k,k)];
 					}
 				}
 			} else {
 				for (j = 0; j < mN; j++) {
 					for (k = 0; k < mN; k++) {
 						for (l = 0; l < mN; l++) {
-							mTheta_W[i][j + k*mN] += mSigma[symi(j,l)] * mTheta_P[symi(l,k)];
+							mTheta_W[i][j + k*mN] += mSigma[0][symi(j,l)] * mTheta_P[symi(l,k)];
 						}
 					}
 				}
@@ -929,7 +1120,7 @@ void BlockComp::getTheta(double *theta) {
 #include "test_data.h"
 
 int main(void) {
-	BlockComp blk;
+	BlockComp blk(4);
 
 /*
 	CovExp    cov;
