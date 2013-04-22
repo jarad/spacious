@@ -1,9 +1,11 @@
 orig_src
 tar.gz
-test
+test/
 proto
 pdf
 zip
 do_inst
 BUILDER
 manual
+.png
+comp.sh
