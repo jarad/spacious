@@ -480,7 +480,9 @@ bool BlockComp::fit(bool verbose) {
 	free(mThreadStatus);
 
 	if (mNthreads > 1) {
+#ifdef DEBUG
 		MSG("TODO: order block pairs for threading!\n");
+#endif
 
 		// allocate space for threads
 		mThreads      = (pthread_t *)malloc(sizeof(pthread_t)*mNthreads);
@@ -1291,7 +1293,7 @@ void BlockComp::getTheta(double *theta) {
 	}
 }
 
-#ifndef BLK
+#ifdef CLINE
 
 // test the estimation on the data in test_data.h
 
@@ -1331,4 +1333,4 @@ int main(void) {
 	return(0);
 }
 
-#endif
+#endif // end main()
