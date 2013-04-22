@@ -210,6 +210,7 @@
 		                        theta=as.double(theta), theta_fixed=as.logical(theta.fixed), beta=as.double(rep(0, p)),
 		                        verbose=as.logical(verbose), tol=as.double(tol), max_iter=as.integer(maxIter),
 		                        nthreads=as.integer(nthreads),
+		                        convergence=as.logical(FALSE), nIter=as.integer(0),
 		                        NAOK=FALSE
 		)
 
