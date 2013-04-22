@@ -45,6 +45,8 @@ public:
 	// extract items of interest
 	void getBeta(double *beta);
 	void getTheta(double *theta);
+	bool getConverged() { return(mConverged); }
+	int  getIters()     { return(mIters); }
 
 private:
 	void cleanup();
