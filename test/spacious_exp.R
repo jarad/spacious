@@ -3,6 +3,7 @@
 if ("package:spacious" %in% search()) {
 	# unload the package
 	detach("package:spacious", unload=TRUE)
+	library.dynam.unload("spacious", libpath="~/Rlib/spacious")
 }
 
 # load the package
@@ -11,7 +12,7 @@ require(spacious)
 set.seed(311)
 
 # generate data to use for fitting a block composite model
-n <- 500
+n <- 1000
 np <- 5   # number to predict
 
 # generate spatial locations S
@@ -55,8 +56,20 @@ time.spacious <- proc.time()
 #fit.spacious <- spacious(y, X, S, cov="exp", nblocks=1^2)
 #fit.spacious <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="exp", nblocks=2^2, verbose=TRUE)
 #fit.spacious <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="exp", blocks=list(type="regular", nblocks=2^2), verbose=TRUE)
-fit.spacious <- spacious(y~x, data=data.frame(y=y[1:n], x=x1[1:n]), S=S[1:n,], cov="exp", blocks=list(type="regular", nblocks=3^2), verbose=TRUE)
 #fit.spacious <- spacious(y.fit~X.fit, S=S.fit, cov="exp", blocks=list(type="regular", nblocks=2^2), verbose=TRUE)
+
+fit.spacious <- spacious(y~x, data=data.frame(y=y[1:n], x=x1[1:n]), S=S[1:n,], cov="exp", blocks=list(type="regular", nblocks=6^2), nthreads=1)
+print(fit.spacious$time)
+fit.spacious <- spacious(y~x, data=data.frame(y=y[1:n], x=x1[1:n]), S=S[1:n,], cov="exp", blocks=list(type="regular", nblocks=6^2), nthreads=2)
+print(fit.spacious$time)
+fit.spacious <- spacious(y~x, data=data.frame(y=y[1:n], x=x1[1:n]), S=S[1:n,], cov="exp", blocks=list(type="regular", nblocks=6^2), nthreads=3)
+print(fit.spacious$time)
+fit.spacious <- spacious(y~x, data=data.frame(y=y[1:n], x=x1[1:n]), S=S[1:n,], cov="exp", blocks=list(type="regular", nblocks=6^2), nthreads=4)
+print(fit.spacious$time)
+
+done
+
+#fit.spacious <- spacious(y~x, data=data.frame(y=y[1:n], x=x1[1:n]), S=S[1:n,], cov="exp", blocks=list(type="full"), verbose=TRUE)
 time.spacious <- proc.time() - time.spacious
 beta.spacious <- fit.spacious$beta
 theta.spacious <- fit.spacious$theta
