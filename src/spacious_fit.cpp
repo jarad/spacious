@@ -12,7 +12,9 @@ void spacious_fit(double *y, double *X, double *S, int *B, int *neighbors,
                   char **lik_form, char **cov,
                   double *theta, bool *theta_fixed, double *beta,
                   bool *verbose, double *tol, int *max_iter,
-                  int *nthreads) {
+                  int *nthreads,
+                  bool *convergence, int *nIter
+) {
 
 	BlockComp blk(nthreads[0]);
 
@@ -47,6 +49,8 @@ void spacious_fit(double *y, double *X, double *S, int *B, int *neighbors,
 	// set fixed parameters
 	blk.setFixed(theta_fixed, theta);
 
+	// TODO: set tolerance and max iters
+
 	// fit!
 	if (!blk.fit(verbose[0])) {
 		error("Error with fit.\n");
@@ -57,10 +61,11 @@ void spacious_fit(double *y, double *X, double *S, int *B, int *neighbors,
 	blk.getBeta(beta);
 	blk.getTheta(theta);
 
-	// TODO: set tolerance and max iters
+	// get convergence info
+	convergence[0] = blk.getConverged();
+	nIter[0]       = blk.getIters();
 
 	return;
-
 }
 
 } // end extern "C"
