@@ -1,2 +1,5 @@
-PKG_CPPFLAGS = -pthread -DPTHREAD
+# pthreads only
+#PKG_CPPFLAGS = -pthread -DPTHREAD
+# pthreads and magma
+PKG_CPPFLAGS = -pthread -DPTHREAD -DMAGMA -I/home/rjp/include -L/home/rjp/lib -lmagma -lmagmablas
 PKG_LIBS = $(LAPACK_LIBS) $(BLAS_LIBS) -pthread -DPTHREAD

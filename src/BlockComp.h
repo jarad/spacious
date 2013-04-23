@@ -14,7 +14,7 @@ typedef struct {
 class BlockComp {
 public:
 	BlockComp();
-	BlockComp(int nthreads);
+	BlockComp(int nthreads, bool gpu);
 	~BlockComp();
 
 	// types of likelihoods we can fit
@@ -24,11 +24,11 @@ public:
 	// should we try to conserve memory during fit?
 	void setConserveMemory(bool conserve) { mConsMem = conserve; }
 
-	void init(int nthreads);
+	void init(int nthreads, bool gpu);
 	void initPointers();
 	void setLikForm(LikForm form);
 	void setCovType(CovType type);
-	void setData(int n, double *y, double *S, int nblocks, int *B, int p, double *X, int npairs, int *neighbors);
+	bool setData(int n, double *y, double *S, int nblocks, int *B, int p, double *X, int npairs, int *neighbors);
 	void setInits(double *theta);
 	void setFixed(bool *fixed, double *values);
 
@@ -83,7 +83,9 @@ private:
 	Cov     *mCov;
 	int      mNtheta;     // number of covariance parameters
 
+	bool   mGPU;         // use GPU?
 	bool   mConsMem;     // should memory be conserved?
+	bool   mPacked;      // use packed storage?
 	bool   mHasFit;      // do we have a fit?
 	bool   mConverged;   // did the fit converge?
 	int    mIters;       // number of iters through fit
@@ -129,6 +131,11 @@ private:
 	pthread_mutex_t mPairMutex;
 	int             mPair_t;
 #endif
+
+#ifdef MAGMA
+	double *mDevSigma;
+#endif
+
 };
 
 #endif

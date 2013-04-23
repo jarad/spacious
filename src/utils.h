@@ -29,6 +29,15 @@ inline int symi(int a, int b) {
 	}
 }
 
+// full (non-packed) symmetric matrix indexing for upper triangle
+inline int fsymi(int a, int b, int n) {
+	if (a <= b) {
+		return(a + b*n);
+	} else {
+		return(b + a*n);
+	}
+}
+
 // function definitions
 int chol2inv(int n, double *A);
 void disp_sym(double *mat, int lo, int hi);

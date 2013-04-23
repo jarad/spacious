@@ -3,8 +3,8 @@
 #include "covs.h"
 
 // compute covariance for a single block of locations
-void Cov::compute(double *Sigma, double *theta, int n, double *D) {
-  compute(Sigma, theta, n, D, 0, NULL, NULL);
+void Cov::compute(double *Sigma, double *theta, int n, double *D, bool packed) {
+  compute(Sigma, theta, n, D, 0, NULL, NULL, packed);
 }
 
 // compute partials for a single block of locations
@@ -21,30 +21,37 @@ CovExp::CovExp() {
 	mNparams = 3;
 }
 
-void CovExp::compute(double *Sigma, double *theta, int n1, double *D1, int n2, double *D2, double *Dc) {
+void CovExp::compute(double *Sigma, double *theta, int n1, double *D1, int n2, double *D2, double *Dc, bool packed) {
 	int i,j;
+	int index;
+	int n = n1+n2;
 
 	for (i = 0; i < n1; i++) {
-		Sigma[symi(i,i)] = theta[0] + theta[1];
+		if (packed) { index = symi(i,i); } else { index = fsymi(i,i,n); }
+		Sigma[index] = theta[0] + theta[1];
 
 		for (j = i+1; j < n1; j++) {
-			Sigma[symi(i,j)] = theta[1] * exp(-D1[symi(i,j)]/theta[2]);
+			if (packed) { index = symi(i,j); } else { index = fsymi(i,j,n); }
+			Sigma[index] = theta[1] * exp(-D1[symi(i,j)]/theta[2]);
 		}
 	}
 
 	if (n2 > 0) {
 		for (i = 0; i < n2; i++) {
-			Sigma[symi(i+n1,i+n1)] = theta[0] + theta[1];
+			if (packed) { index = symi(i+n1,i+n1); } else { index = fsymi(i+n1,i+n1,n); }
+			Sigma[index] = theta[0] + theta[1];
 
 			for (j = i+1; j < n2; j++) {
-				Sigma[symi(i+n1,j+n1)] = theta[1] * exp(-D2[symi(i,j)]/theta[2]);
+				if (packed) { index = symi(i+n1,j+n1); } else { index = fsymi(i+n1,j+n1,n); }
+				Sigma[index] = theta[1] * exp(-D2[symi(i,j)]/theta[2]);
 			}
 		}
 
 		// cross terms
 		for (i = 0; i < n1; i++) {
 			for (j = 0; j < n2; j++) {
-				Sigma[symi(i,j+n1)] = theta[1] * exp(-Dc[i + j*n1]/theta[2]);
+				if (packed) { index = symi(i,j+n1); } else { index = fsymi(i,j+n1,n); }
+				Sigma[index] = theta[1] * exp(-Dc[i + j*n1]/theta[2]);
 			}
 		}
 	}

@@ -1,31 +1,46 @@
 // Estimates block composite models with Fisher scoring
 #include <stdio.h>
 
-#ifdef PTHREAD
-#include <pthread.h>
-#endif
-
 #include <R.h>
-#include <R_ext/Lapack.h>
 
 #include "BlockComp.h"
 #include "covs.h"
 #include "utils.h"
 
+#ifdef PTHREAD
+#include <pthread.h>
+#endif
+
+#ifdef MAGMA
+#include <cuda_runtime_api.h>
+#include <cublas.h>
+#include "magma.h"
+#include "magma_lapack.h"
+
+#include "utils_magma.h"
+#else
+#include <R_ext/Lapack.h>
+#endif
+
 // constructor
 BlockComp::BlockComp() {
-	init(1);
+	init(1, false);
 }
 
-BlockComp::BlockComp(int nthreads) {
+BlockComp::BlockComp(int nthreads, bool gpu) {
 #ifdef PTHREAD
-	init(nthreads);
+	init(nthreads, gpu);
 #else
-	init(1);
+	init(1, gpu);
 #endif
 }
 
 BlockComp::~BlockComp() {
+
+#ifdef MAGMA
+	cublasShutdown();
+#endif
+
 	cleanup();
 
 	// only clear these to end
@@ -35,7 +50,7 @@ BlockComp::~BlockComp() {
 	free(mFixedVals);
 }
 
-void BlockComp::init(int nthreads) {
+void BlockComp::init(int nthreads, bool gpu) {
 	initPointers();
 
 	setThreads(nthreads);
@@ -47,7 +62,9 @@ void BlockComp::init(int nthreads) {
 	mFixedVals  = NULL;
 
 	// default booleans
+	mGPU       = gpu;
 	mConsMem   = false;
+	mPacked    = true;
 	mHasFit    = false;
 	mConverged = false;
 
@@ -58,6 +75,25 @@ void BlockComp::init(int nthreads) {
 	// default control params
 	mIterTol = 1e-3;
 	mMaxIter = 100;
+
+#ifdef MAGMA
+	if (mGPU) {
+		mPacked = false;
+
+		if (cublasInit() != CUBLAS_STATUS_SUCCESS) {
+			MSG("cublasInit() failed\n");
+#ifdef CLINE
+			exit(-1);
+#else
+			error("init(): Unable to initialize cublas.\n");
+#endif
+		}
+
+#ifdef DEBUG
+			printout_devices();
+#endif
+	}
+#endif
 }
 
 // initialize pointers
@@ -91,6 +127,10 @@ void BlockComp::initPointers() {
 	mTheta_H_t    = NULL;
 	mTheta_P_t    = NULL;
 	mTheta_u_t    = NULL;
+#endif
+
+#ifdef MAGMA
+	mDevSigma     = NULL;
 #endif
 }
 
@@ -242,7 +282,7 @@ void BlockComp::setCovType(CovType type) {
 }
 
 // specify data to fit model to
-void BlockComp::setData(int n, double *y, double *S, int nblocks, int *B, int p, double *X, int npairs, int *neighbors) {
+bool BlockComp::setData(int n, double *y, double *S, int nblocks, int *B, int p, double *X, int npairs, int *neighbors) {
 	int i,j,k;
 	int blk1, blk2;
 	int nIn1, nIn2;
@@ -312,14 +352,32 @@ void BlockComp::setData(int n, double *y, double *S, int nblocks, int *B, int p,
 	// allocate largest Sigma we need
 	mSigma = (double **)malloc(sizeof(double *)*mNthreads);
 	for (i = 0; i < mNthreads; i++) {
-		mSigma[i] = (double *)malloc(sizeof(double)*symi(0,mMaxPair));
+		if (!mPacked) {
+			// we can't use packed storage
+			mSigma[i] = (double *)malloc(sizeof(double)*pow(mMaxPair,2));
 
-		for (j = 0; j < symi(0,mMaxPair); j++) { mSigma[i][j] = 0; }
-	}
+			for (j = 0; j < pow(mMaxPair,2); j++) { mSigma[i][j] = 0; }
+
+#ifdef MAGMA
+			if (magma_malloc( (void **) &mDevSigma, pow(mMaxPair,2)*sizeof(double) ) != MAGMA_SUCCESS) {
+				MSG("setData(): Unable to allocate device memory for mDevSigma\n");
+				return(false);
+			}
+#endif
+
+#ifdef DEBUG
+	MSG("max pair=%d with length %d\n", mMaxPair, (int)pow(mMaxPair,2));
+#endif
+		} else {
+			mSigma[i] = (double *)malloc(sizeof(double)*symi(0,mMaxPair));
+
+			for (j = 0; j < symi(0,mMaxPair); j++) { mSigma[i][j] = 0; }
 
 #ifdef DEBUG
 	MSG("max pair=%d with length %d\n", mMaxPair, symi(0, mMaxPair));
 #endif
+		}
+	}
 
 	if (!mConsMem) {
 		// not trying to conserve memory, so store distances...
@@ -383,6 +441,8 @@ void BlockComp::setData(int n, double *y, double *S, int nblocks, int *B, int p,
 		}
 
 	}  // end memory conservation check
+
+	return(true);
 }
 
 void BlockComp::setInits(double *theta) {
@@ -422,7 +482,7 @@ bool BlockComp::fit(bool verbose) {
 	bool largeDiff;
 
 #ifdef DEBUG
-	MSG("Starting fit() (# of threads=%d)...\n", mNthreads);
+	MSG("Starting fit() (# of threads=%d, use gpu=%d)...\n", mNthreads, mGPU);
 #endif
 
 	// make sure we have initial values
@@ -640,7 +700,7 @@ bool BlockComp::fit(bool verbose) {
 // update mean parameters
 bool BlockComp::updateBeta() {
 	int i,j,k,l;
-	int selem,icol,jcol;
+	int selem,icol,jcol,kcol;
 	int pair;
 
 	// initialize A and b
@@ -718,7 +778,7 @@ bool BlockComp::updateBeta() {
 
 		if (!mConsMem) {
 			// fill in covariance matrix between these two blocks
-			mCov->compute(mSigma[0], mTheta, mN, mWithinD[0]);
+			mCov->compute(mSigma[0], mTheta, mN, mWithinD[0], mPacked);
 		} else {
 			// we're conserving memory
 
@@ -729,10 +789,29 @@ bool BlockComp::updateBeta() {
 		}
 
 		// invert Sigma
-		if (chol2inv(mN, mSigma[0])) {
-			MSG("updateBeta(): unable to invert Sigma\n");
-			return(false);
+#ifdef MAGMA
+		if (!mGPU) {  // compiled with magma, but don't use GPU...
+#endif
+			if (chol2inv(mN, mSigma[0])) {
+				MSG("updateBeta(): unable to invert Sigma\n");
+				return(false);
+			}
+#ifdef MAGMA
+		} else {
+			// use GPU
+
+			// copy host Sigma to device
+			magma_dsetmatrix(mN, mN, mSigma[0], mN, mDevSigma, mN);
+
+			if (magma_chol2inv_gpu(mN, mDevSigma)) {
+				MSG("updateBeta(): unable to invert Sigma with magma on GPU\n");
+				return(false);
+			}
+
+			// copy device Sigma back to host
+			magma_dgetmatrix(mN, mN, mDevSigma, mN, mSigma[0], mN);
 		}
+#endif
 
 		// add contribution to A and b
 		for (i = 0; i < mNbeta; i++) {
@@ -744,9 +823,15 @@ bool BlockComp::updateBeta() {
 
 				for (k = 0; k < mN; k++) {
 					for (l = 0; l < mN; l++) {
-						mBeta_A[selem] += mX[l + icol] * mSigma[0][symi(l,k)] * mX[k + jcol];
+						if (mPacked) {
+							kcol = symi(l,k);
+						} else {
+							kcol = fsymi(l,k,mN);
+						}
+
+						mBeta_A[selem] += mX[l + icol] * mSigma[0][kcol] * mX[k + jcol];
 						if (i == j) {
-							mBeta_b[i] += mX[l + icol] * mSigma[0][symi(l,k)] * mY[k];
+							mBeta_b[i] += mX[l + icol] * mSigma[0][kcol] * mY[k];
 						}
 					}
 				}
@@ -768,7 +853,9 @@ bool BlockComp::updateBeta() {
 		for (j = 0; j < mNbeta; j++) {
 			mBeta[i] += mBeta_A[symi(i,j)] * mBeta_b[j];
 		}
+MSG("mBeta[%d] = %.2f\n", i, mBeta[i]);
 	}
+return(false);
 
 	return(true);
 }
@@ -784,7 +871,7 @@ bool BlockComp::updateBetaPair(int pair, double *Sigma, double *A, double *b) {
 
 	if (!mConsMem) {
 		// fill in covariance matrix between these two blocks
-		mCov->compute(Sigma, mTheta, mNB[blk1], mWithinD[blk1], mNB[blk2], mWithinD[blk2], mBetweenD[pair]);
+		mCov->compute(Sigma, mTheta, mNB[blk1], mWithinD[blk1], mNB[blk2], mWithinD[blk2], mBetweenD[pair], true);
 	} else {
 		// we're conserving memory
 
@@ -1119,7 +1206,7 @@ bool BlockComp::updateThetaPair(int pair, double *Sigma, double **W, double *H, 
 
 	if (!mConsMem) {
 		// fill in covariance matrix between these two blocks
-		mCov->compute(Sigma, mTheta, mNB[blk1], mWithinD[blk1], mNB[blk2], mWithinD[blk2], mBetweenD[pair]);
+		mCov->compute(Sigma, mTheta, mNB[blk1], mWithinD[blk1], mNB[blk2], mWithinD[blk2], mBetweenD[pair], true);
 	} else {
 		// we're conserving memory
 
@@ -1300,7 +1387,7 @@ void BlockComp::getTheta(double *theta) {
 #include "test_data.h"
 
 int main(void) {
-	BlockComp blk(4);
+	BlockComp blk(1, true);
 
 	// start blocks at 0
 	int i;
@@ -1312,11 +1399,14 @@ int main(void) {
 		test_neighbors[i]--;
 	}
 
-	blk.setLikForm(BlockComp::Block);
-	//blk.setLikForm(BlockComp::Full);
+	//blk.setLikForm(BlockComp::Block);
+	blk.setLikForm(BlockComp::Full);
 	blk.setCovType(BlockComp::Exp);
 
-	blk.setData(test_n, test_y, test_S, test_nblocks, test_B, test_p, test_X, test_npairs, test_neighbors);
+	if (!blk.setData(test_n, test_y, test_S, test_nblocks, test_B, test_p, test_X, test_npairs, test_neighbors)) {
+		MSG("Error allocating data for fit.\n");
+		return(-1);
+	}
 	//blk.setData(test_n, test_y, test_S, test_nblocks, test_B, test_p, test_X, test_npairs, test_neighbors);
 
 	//double inits[] = {0.25, 0.25, 0.5};
