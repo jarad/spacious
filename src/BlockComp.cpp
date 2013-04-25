@@ -1,5 +1,6 @@
 // Estimates block composite models with Fisher scoring
 #include <stdio.h>
+#include <unistd.h>
 
 #include <R.h>
 
@@ -11,16 +12,13 @@
 #include <pthread.h>
 #endif
 
-#ifdef MAGMA
-#include <cuda_runtime_api.h>
-#include <cublas.h>
-#include "magma.h"
-#include "magma_lapack.h"
-
-#include "utils_magma.h"
-#else
-#include <R_ext/Lapack.h>
+#ifdef CUDA
+#include <cuda_runtime.h>
+#include <cublas_v2.h>
+#include "utils_cuda.h"
 #endif
+
+#include <R_ext/Lapack.h>
 
 // constructor
 BlockComp::BlockComp() {
@@ -36,11 +34,6 @@ BlockComp::BlockComp(int nthreads, bool gpu) {
 }
 
 BlockComp::~BlockComp() {
-
-#ifdef MAGMA
-	cublasShutdown();
-#endif
-
 	cleanup();
 
 	// only clear these to end
@@ -48,6 +41,13 @@ BlockComp::~BlockComp() {
 	free(mThetaInits);
 	free(mFixed);
 	free(mFixedVals);
+
+#ifdef CUDA
+	if (mGPU) {
+		cublasDestroy(mCublasHandle);
+		cudaDeviceReset();
+	}
+#endif
 }
 
 void BlockComp::init(int nthreads, bool gpu) {
@@ -76,21 +76,21 @@ void BlockComp::init(int nthreads, bool gpu) {
 	mIterTol = 1e-3;
 	mMaxIter = 100;
 
-#ifdef MAGMA
+#ifdef CUDA
 	if (mGPU) {
 		mPacked = false;
 
-		if (cublasInit() != CUBLAS_STATUS_SUCCESS) {
-			MSG("cublasInit() failed\n");
+		if (cublasCreate(&mCublasHandle) != CUBLAS_STATUS_SUCCESS) {
 #ifdef CLINE
+			MSG("init(): Unable to initialize CUBLAS.\n");
 			exit(-1);
 #else
-			error("init(): Unable to initialize cublas.\n");
+			error("init(): Unable to initialize CUBLAS.\n");
 #endif
 		}
 
 #ifdef DEBUG
-			printout_devices();
+		cuda_devices();
 #endif
 	}
 #endif
@@ -129,7 +129,7 @@ void BlockComp::initPointers() {
 	mTheta_u_t    = NULL;
 #endif
 
-#ifdef MAGMA
+#ifdef CUDA
 	mDevSigma     = NULL;
 #endif
 }
@@ -229,6 +229,16 @@ void BlockComp::cleanup() {
 		free(mTheta_H_t);
 		free(mTheta_P_t);
 		free(mTheta_u_t);
+	}
+#endif
+
+#ifdef CUDA
+	if (mGPU) {
+		if (mDevSigma != NULL) {
+			if (cudaFree(mDevSigma) != cudaSuccess) {
+				MSG("cleanup(): Unable to free device memory for mDevSigma: %s\n", cudaGetErrorString(cudaGetLastError()));
+			}
+		}
 	}
 #endif
 
@@ -354,24 +364,35 @@ bool BlockComp::setData(int n, double *y, double *S, int nblocks, int *B, int p,
 	for (i = 0; i < mNthreads; i++) {
 		if (!mPacked) {
 			// we can't use packed storage
-			mSigma[i] = (double *)malloc(sizeof(double)*pow(mMaxPair,2));
+			mSigma[i] = (double *)malloc(sizeof(double)*mMaxPair*mMaxPair);
 
-			for (j = 0; j < pow(mMaxPair,2); j++) { mSigma[i][j] = 0; }
+			for (j = 0; j < mMaxPair*mMaxPair; j++) { mSigma[i][j] = 0; }
 
-#ifdef MAGMA
-			if (magma_malloc( (void **) &mDevSigma, pow(mMaxPair,2)*sizeof(double) ) != MAGMA_SUCCESS) {
-				MSG("setData(): Unable to allocate device memory for mDevSigma\n");
-				return(false);
+#ifdef CUDA
+			if (mGPU) {
+				if (cudaMalloc( (void **) &mDevSigma, mMaxPair*mMaxPair*sizeof(double) ) != cudaSuccess) {
+					MSG("setData(): Unable to allocate device memory for mDevSigma: %s\n", cudaGetErrorString(cudaGetLastError()));
+					return(false);
+				}
 			}
 #endif
 
 #ifdef DEBUG
-	MSG("max pair=%d with length %d\n", mMaxPair, (int)pow(mMaxPair,2));
+	MSG("max pair=%d with length %d\n", mMaxPair, mMaxPair*mMaxPair);
 #endif
 		} else {
 			mSigma[i] = (double *)malloc(sizeof(double)*symi(0,mMaxPair));
 
 			for (j = 0; j < symi(0,mMaxPair); j++) { mSigma[i][j] = 0; }
+
+#ifdef CUDA
+			if (mGPU) {
+				if (cudaMalloc( (void **) &mDevSigma, symi(0,mMaxPair)*sizeof(double) ) != cudaSuccess) {
+					MSG("setData(): Unable to allocate device memory for mDevSigma: %s\n", cudaGetErrorString(cudaGetLastError()));
+					return(false);
+				}
+			}
+#endif
 
 #ifdef DEBUG
 	MSG("max pair=%d with length %d\n", mMaxPair, symi(0, mMaxPair));
@@ -532,7 +553,7 @@ bool BlockComp::fit(bool verbose) {
 	mTheta_H = (double *)malloc(sizeof(double)*symi(0,mNtheta));
 	mTheta_P = (double *)malloc(sizeof(double)*symi(0,mMaxPair));
 	for (i = 0; i < mNtheta; i++) {
-		mTheta_W[i] = (double *)malloc(sizeof(double)*pow(mMaxPair,2));
+		mTheta_W[i] = (double *)malloc(sizeof(double)*mMaxPair*mMaxPair);
 	}
 
 #ifdef PTHREAD
@@ -602,7 +623,7 @@ bool BlockComp::fit(bool verbose) {
 		for (i = 0; i < mNthreads; i++) {
 			mTheta_W_t[i] = (double **)malloc(sizeof(double)*mNtheta);
 			for (int j = 0; j < mNtheta; j++) {
-				mTheta_W_t[i][j] = (double *)malloc(sizeof(double)*pow(mMaxPair,2));
+				mTheta_W_t[i][j] = (double *)malloc(sizeof(double)*mMaxPair*mMaxPair);
 			}
 
 			mTheta_H_t[i] = (double *)malloc(sizeof(double)*symi(0,mNtheta));
@@ -789,27 +810,33 @@ bool BlockComp::updateBeta() {
 		}
 
 		// invert Sigma
-#ifdef MAGMA
+#ifdef CUDA
 		if (!mGPU) {  // compiled with magma, but don't use GPU...
 #endif
 			if (chol2inv(mN, mSigma[0])) {
 				MSG("updateBeta(): unable to invert Sigma\n");
 				return(false);
 			}
-#ifdef MAGMA
+#ifdef CUDA
 		} else {
 			// use GPU
 
+//return(false);
 			// copy host Sigma to device
-			magma_dsetmatrix(mN, mN, mSigma[0], mN, mDevSigma, mN);
-
-			if (magma_chol2inv_gpu(mN, mDevSigma)) {
-				MSG("updateBeta(): unable to invert Sigma with magma on GPU\n");
+			if (cudaMemcpy(mDevSigma, mSigma[0], mN*mN*sizeof(double), cudaMemcpyHostToDevice) != cudaSuccess) {
+				MSG("updateBeta(): unable to copy Sigma to device: %s\n", cudaGetErrorString(cudaGetLastError()));
 				return(false);
 			}
 
-			// copy device Sigma back to host
-			magma_dgetmatrix(mN, mN, mDevSigma, mN, mSigma[0], mN);
+			// invert Sigma with GPU
+			cuda_chol2inv(mCublasHandle, mN, mDevSigma);
+
+			// copy device Sigma to host
+			if (cudaMemcpy(mSigma[0], mDevSigma, mN*mN*sizeof(double), cudaMemcpyDeviceToHost) != cudaSuccess) {
+				MSG("updateBeta(): unable to copy Sigma to host: %s\n", cudaGetErrorString(cudaGetLastError()));
+				return(false);
+			}
+
 		}
 #endif
 
@@ -853,9 +880,7 @@ bool BlockComp::updateBeta() {
 		for (j = 0; j < mNbeta; j++) {
 			mBeta[i] += mBeta_A[symi(i,j)] * mBeta_b[j];
 		}
-MSG("mBeta[%d] = %.2f\n", i, mBeta[i]);
 	}
-return(false);
 
 	return(true);
 }
@@ -1084,7 +1109,8 @@ bool BlockComp::updateTheta() {
 		// compute q = inv(Sigma) x resids
 		for (i = 0; i < mN; i++) {
 			for (j = 0; j < mN; j++) {
-				q[i] += mSigma[0][symi(i,j)] * resids[j];
+				if (mPacked) { c = symi(i,j); } else { c = fsymi(i,j,mN); }
+				q[i] += mSigma[0][c] * resids[j];
 			}
 		}
 
@@ -1106,14 +1132,16 @@ bool BlockComp::updateTheta() {
 				// take advantage of P being diagonal
 				for (j = 0; j < mN; j++) {
 					for (k = 0; k < mN; k++) {
-						mTheta_W[i][j + k*mN] = mSigma[0][symi(j,k)] * mTheta_P[symi(k,k)];
+						if (mPacked) { c = symi(j,k); } else { c = fsymi(j,k,mN); }
+						mTheta_W[i][j + k*mN] = mSigma[0][c] * mTheta_P[symi(k,k)];
 					}
 				}
 			} else {
 				for (j = 0; j < mN; j++) {
 					for (k = 0; k < mN; k++) {
 						for (l = 0; l < mN; l++) {
-							mTheta_W[i][j + k*mN] += mSigma[0][symi(j,l)] * mTheta_P[symi(l,k)];
+							if (mPacked) { c = symi(j,l); } else { c = fsymi(j,l,mN); }
+							mTheta_W[i][j + k*mN] += mSigma[0][c] * mTheta_P[symi(l,k)];
 						}
 					}
 				}
@@ -1386,8 +1414,8 @@ void BlockComp::getTheta(double *theta) {
 
 #include "test_data.h"
 
-int main(void) {
-	BlockComp blk(1, true);
+void test_bc(int nthreads, bool gpu) {
+	BlockComp blk(nthreads, gpu);
 
 	// start blocks at 0
 	int i;
@@ -1405,7 +1433,7 @@ int main(void) {
 
 	if (!blk.setData(test_n, test_y, test_S, test_nblocks, test_B, test_p, test_X, test_npairs, test_neighbors)) {
 		MSG("Error allocating data for fit.\n");
-		return(-1);
+		return;
 	}
 	//blk.setData(test_n, test_y, test_S, test_nblocks, test_B, test_p, test_X, test_npairs, test_neighbors);
 
@@ -1416,9 +1444,16 @@ int main(void) {
 
 	blk.setInits(test_inits);
 	blk.setFixed(fixed, vals);
+
 	if (!blk.fit(true)) {
 		MSG("Error with fit.\n");
 	}
+}
+
+int main(void) {
+	test_bc(1, true);
+	//test_bc(1, true);
+	//test_bc(1, true);
 
 	return(0);
 }

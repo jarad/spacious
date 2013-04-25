@@ -11,6 +11,11 @@ typedef struct {
 } pair_update_t;
 #endif
 
+#ifdef CUDA
+#include <cuda_runtime_api.h>
+#include <cublas_v2.h>
+#endif
+
 class BlockComp {
 public:
 	BlockComp();
@@ -132,8 +137,9 @@ private:
 	int             mPair_t;
 #endif
 
-#ifdef MAGMA
-	double *mDevSigma;
+#ifdef CUDA
+	cublasHandle_t   mCublasHandle;
+	double          *mDevSigma;
 #endif
 
 };

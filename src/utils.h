@@ -38,6 +38,14 @@ inline int fsymi(int a, int b, int n) {
 	}
 }
 
+inline int imin(int a, int b) {
+	if (a < b) {
+		return(a);
+	} else {
+		return(b);
+	}
+}
+
 // function definitions
 int chol2inv(int n, double *A);
 void disp_sym(double *mat, int lo, int hi);
