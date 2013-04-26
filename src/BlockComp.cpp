@@ -1,6 +1,7 @@
 // Estimates block composite models with Fisher scoring
 #include <stdio.h>
 #include <unistd.h>
+#include <time.h>
 
 #include <R.h>
 
@@ -62,11 +63,11 @@ void BlockComp::init(int nthreads, bool gpu) {
 	mFixedVals  = NULL;
 
 	// default booleans
-	mGPU       = gpu;
-	mConsMem   = false;
-	mPacked    = true;
-	mHasFit    = false;
-	mConverged = false;
+	mGPU        = gpu;
+	mConsMem    = false;
+	mConsMemGPU = false;
+	mHasFit     = false;
+	mConverged  = false;
 
 	// default setup
 	setLikForm(Block);
@@ -78,7 +79,6 @@ void BlockComp::init(int nthreads, bool gpu) {
 
 #ifdef CUDA
 	if (mGPU) {
-		mPacked = false;
 
 		if (cublasCreate(&mCublasHandle) != CUBLAS_STATUS_SUCCESS) {
 #ifdef CLINE
@@ -362,42 +362,22 @@ bool BlockComp::setData(int n, double *y, double *S, int nblocks, int *B, int p,
 	// allocate largest Sigma we need
 	mSigma = (double **)malloc(sizeof(double *)*mNthreads);
 	for (i = 0; i < mNthreads; i++) {
-		if (!mPacked) {
-			// we can't use packed storage
-			mSigma[i] = (double *)malloc(sizeof(double)*mMaxPair*mMaxPair);
+		mSigma[i] = (double *)malloc(sizeof(double)*mMaxPair*mMaxPair);
 
-			for (j = 0; j < mMaxPair*mMaxPair; j++) { mSigma[i][j] = 0; }
+		for (j = 0; j < mMaxPair*mMaxPair; j++) { mSigma[i][j] = 0; }
 
 #ifdef CUDA
-			if (mGPU) {
-				if (cudaMalloc( (void **) &mDevSigma, mMaxPair*mMaxPair*sizeof(double) ) != cudaSuccess) {
-					MSG("setData(): Unable to allocate device memory for mDevSigma: %s\n", cudaGetErrorString(cudaGetLastError()));
-					return(false);
-				}
+		if (mGPU) {
+			if (cudaMalloc( (void **) &mDevSigma, mMaxPair*mMaxPair*sizeof(double) ) != cudaSuccess) {
+				MSG("setData(): Unable to allocate device memory for mDevSigma: %s\n", cudaGetErrorString(cudaGetLastError()));
+				return(false);
 			}
+		}
 #endif
 
 #ifdef DEBUG
 	MSG("max pair=%d with length %d\n", mMaxPair, mMaxPair*mMaxPair);
 #endif
-		} else {
-			mSigma[i] = (double *)malloc(sizeof(double)*symi(0,mMaxPair));
-
-			for (j = 0; j < symi(0,mMaxPair); j++) { mSigma[i][j] = 0; }
-
-#ifdef CUDA
-			if (mGPU) {
-				if (cudaMalloc( (void **) &mDevSigma, symi(0,mMaxPair)*sizeof(double) ) != cudaSuccess) {
-					MSG("setData(): Unable to allocate device memory for mDevSigma: %s\n", cudaGetErrorString(cudaGetLastError()));
-					return(false);
-				}
-			}
-#endif
-
-#ifdef DEBUG
-	MSG("max pair=%d with length %d\n", mMaxPair, symi(0, mMaxPair));
-#endif
-		}
 	}
 
 	if (!mConsMem) {
@@ -537,7 +517,7 @@ bool BlockComp::fit(bool verbose) {
 	free(mBeta_A);
 	free(mBeta_b);
 	mBeta   = (double *)malloc(sizeof(double)*mNbeta);
-	mBeta_A = (double *)malloc(sizeof(double)*symi(0,mNbeta));
+	mBeta_A = (double *)malloc(sizeof(double)*mNbeta*mNbeta);
 	mBeta_b = (double *)malloc(sizeof(double)*mNbeta);
 
 	// prepare variables for updating theta
@@ -550,8 +530,8 @@ bool BlockComp::fit(bool verbose) {
 	free(mTheta_H);
 	free(mTheta_P);
 	mTheta_W = (double **)malloc(sizeof(double *)*mNtheta);
-	mTheta_H = (double *)malloc(sizeof(double)*symi(0,mNtheta));
-	mTheta_P = (double *)malloc(sizeof(double)*symi(0,mMaxPair));
+	mTheta_H = (double *)malloc(sizeof(double)*mNtheta*mNtheta);
+	mTheta_P = (double *)malloc(sizeof(double)*mMaxPair*mMaxPair);
 	for (i = 0; i < mNtheta; i++) {
 		mTheta_W[i] = (double *)malloc(sizeof(double)*mMaxPair*mMaxPair);
 	}
@@ -595,7 +575,7 @@ bool BlockComp::fit(bool verbose) {
 		mBeta_A_t = (double **)malloc(sizeof(double *)*mNthreads);
 		mBeta_b_t = (double **)malloc(sizeof(double *)*mNthreads);
 		for (i = 0; i < mNthreads; i++) {
-			mBeta_A_t[i] = (double *)malloc(sizeof(double)*symi(0,mNbeta));
+			mBeta_A_t[i] = (double *)malloc(sizeof(double)*mNbeta*mNbeta);
 			mBeta_b_t[i] = (double *)malloc(sizeof(double)*mNbeta);
 		}
 
@@ -626,8 +606,8 @@ bool BlockComp::fit(bool verbose) {
 				mTheta_W_t[i][j] = (double *)malloc(sizeof(double)*mMaxPair*mMaxPair);
 			}
 
-			mTheta_H_t[i] = (double *)malloc(sizeof(double)*symi(0,mNtheta));
-			mTheta_P_t[i] = (double *)malloc(sizeof(double)*symi(0,mMaxPair));
+			mTheta_H_t[i] = (double *)malloc(sizeof(double)*mNtheta*mNtheta);
+			mTheta_P_t[i] = (double *)malloc(sizeof(double)*mMaxPair*mMaxPair);
 			mTheta_u_t[i] = (double *)malloc(sizeof(double)*mNtheta);
 		}
 
@@ -720,13 +700,15 @@ bool BlockComp::fit(bool verbose) {
 
 // update mean parameters
 bool BlockComp::updateBeta() {
-	int i,j,k,l;
-	int selem,icol,jcol,kcol;
+	int i,j;
 	int pair;
+#ifdef CUDA
+	cublasStatus_t status;
+#endif
 
 	// initialize A and b
-	for (i = 0; i < symi(0,mNbeta); i++) { mBeta_A[i] = 0; }
-	for (i = 0; i < mNbeta;         i++) { mBeta_b[i] = 0; }
+	for (i = 0; i < mNbeta*mNbeta; i++) { mBeta_A[i] = 0; }
+	for (i = 0; i < mNbeta;        i++) { mBeta_b[i] = 0; }
 
 	if (mLikForm == Block) {
 		// update beta with block composite likelihood
@@ -780,8 +762,8 @@ bool BlockComp::updateBeta() {
 
 			// combine results from each thread
 			for (j = 0; j < mNthreads; j++) {
-				for (i = 0; i < symi(0,mNbeta); i++) { mBeta_A[i] += mBeta_A_t[j][i]; }
-				for (i = 0; i < mNbeta;         i++) { mBeta_b[i] += mBeta_b_t[j][i]; }
+				for (i = 0; i < mNbeta*mNbeta; i++) { mBeta_A[i] += mBeta_A_t[j][i]; }
+				for (i = 0; i < mNbeta;        i++) { mBeta_b[i] += mBeta_b_t[j][i]; }
 			}
 		}
 #endif
@@ -799,7 +781,7 @@ bool BlockComp::updateBeta() {
 
 		if (!mConsMem) {
 			// fill in covariance matrix between these two blocks
-			mCov->compute(mSigma[0], mTheta, mN, mWithinD[0], mPacked);
+			mCov->compute(mSigma[0], mTheta, mN, mWithinD[0]);
 		} else {
 			// we're conserving memory
 
@@ -811,7 +793,7 @@ bool BlockComp::updateBeta() {
 
 		// invert Sigma
 #ifdef CUDA
-		if (!mGPU) {  // compiled with magma, but don't use GPU...
+		if (!mGPU) {  // compiled with cuda, but don't use GPU...
 #endif
 			if (chol2inv(mN, mSigma[0])) {
 				MSG("updateBeta(): unable to invert Sigma\n");
@@ -821,7 +803,6 @@ bool BlockComp::updateBeta() {
 		} else {
 			// use GPU
 
-//return(false);
 			// copy host Sigma to device
 			if (cudaMemcpy(mDevSigma, mSigma[0], mN*mN*sizeof(double), cudaMemcpyHostToDevice) != cudaSuccess) {
 				MSG("updateBeta(): unable to copy Sigma to device: %s\n", cudaGetErrorString(cudaGetLastError()));
@@ -829,42 +810,164 @@ bool BlockComp::updateBeta() {
 			}
 
 			// invert Sigma with GPU
-			cuda_chol2inv(mCublasHandle, mN, mDevSigma);
+			if (cuda_chol2inv(mCublasHandle, mN, mDevSigma)) {
+				MSG("updateBeta(): unable to invert Sigma\n");
+				return(false);
+			}
 
 			// copy device Sigma to host
 			if (cudaMemcpy(mSigma[0], mDevSigma, mN*mN*sizeof(double), cudaMemcpyDeviceToHost) != cudaSuccess) {
 				MSG("updateBeta(): unable to copy Sigma to host: %s\n", cudaGetErrorString(cudaGetLastError()));
 				return(false);
 			}
-
 		}
 #endif
 
-		// add contribution to A and b
-		for (i = 0; i < mNbeta; i++) {
-			icol = i*mN;
-
-			for (j = i; j < mNbeta; j++) {
-				selem = symi(i,j);
-				jcol  = j*mN;
-
-				for (k = 0; k < mN; k++) {
-					for (l = 0; l < mN; l++) {
-						if (mPacked) {
-							kcol = symi(l,k);
-						} else {
-							kcol = fsymi(l,k,mN);
-						}
-
-						mBeta_A[selem] += mX[l + icol] * mSigma[0][kcol] * mX[k + jcol];
-						if (i == j) {
-							mBeta_b[i] += mX[l + icol] * mSigma[0][kcol] * mY[k];
-						}
-					}
-				}
-
+		// fill in lower triangle of Sigma
+		for (i = 0; i < mN; i++) {
+			for (j = i+1; j < mN; j++) {
+				mSigma[0][lsymi(i,j,mN)] = mSigma[0][usymi(i,j,mN)];
 			}
 		}
+
+		// compute A = X'inv(Sigma)X and b = X'inv(Sigma)y
+#ifdef CUDA
+		if (!mGPU) {  // compiled with cuda, but don't use GPU...
+#endif
+
+			double *dXtS = (double *)malloc(sizeof(double)*mNbeta*mN);
+			for (i = 0; i < mNbeta*mN; i++) { dXtS[i] = 0; }
+			char   cT = 'T';
+			char   cN = 'N';
+			double p1 = 1.0;
+			int    i1 = 1;
+
+			// compute X'inv(Sigma)
+			dgemm_(&cT, &cN, &mNbeta, &mN, &mN, &p1, mX, &mN, mSigma[0], &mN, &p1, dXtS, &mNbeta);
+
+			// compute A = X'inv(Sigma)X
+			dgemm_(&cN, &cN, &mNbeta, &mNbeta, &mN, &p1, dXtS, &mNbeta, mX, &mN, &p1, mBeta_A, &mNbeta);
+
+			// compute b = X'inv(Sigma)y
+			dgemv_(&cN, &mNbeta, &mN, &p1, dXtS, &mNbeta, mY, &i1, &p1, mBeta_b, &i1);
+
+			free(dXtS);
+
+#ifdef CUDA
+		} else {
+			// use GPU
+
+			double *devX;
+			double *devXtS;
+			double *devy;
+			double *devA;
+			double *devb;
+			double p1 = 1.0;
+			int    i1 = 1;
+
+			// allocate space on device
+			if (cudaMalloc((void **)&devX, mN*mNbeta*sizeof(double)) != cudaSuccess) {
+				MSG("updateBeta(): unable to allocate space for X on device: %s\n", cudaGetErrorString(cudaGetLastError()));
+				return(false);
+			}
+
+			if (cudaMalloc((void **)&devXtS, mNbeta*mN*sizeof(double)) != cudaSuccess) {
+				MSG("updateBeta(): unable to allocate space for X'inv(Sigma) on device: %s\n", cudaGetErrorString(cudaGetLastError()));
+				return(false);
+			}
+
+			if (cudaMalloc((void **)&devy, mN*sizeof(double)) != cudaSuccess) {
+				MSG("updateBeta(): unable to allocate space for Y on device: %s\n", cudaGetErrorString(cudaGetLastError()));
+				return(false);
+			}
+
+			if (cudaMalloc((void **)&devA, mNbeta*mNbeta*sizeof(double)) != cudaSuccess) {
+				MSG("updateBeta(): unable to allocate space for A on device: %s\n", cudaGetErrorString(cudaGetLastError()));
+				return(false);
+			}
+
+			if (cudaMalloc((void **)&devb, mNbeta*sizeof(double)) != cudaSuccess) {
+				MSG("updateBeta(): unable to allocate space for b on device: %s\n", cudaGetErrorString(cudaGetLastError()));
+				return(false);
+			}
+
+			// copy host Sigma to device
+			if (cudaMemcpy(mDevSigma, mSigma[0], mN*mN*sizeof(double), cudaMemcpyHostToDevice) != cudaSuccess) {
+				MSG("updateBeta(): unable to copy Sigma to device: %s\n", cudaGetErrorString(cudaGetLastError()));
+				return(false);
+			}
+
+			// copy host X to device
+			if (cudaMemcpy(devX, mX, mN*mNbeta*sizeof(double), cudaMemcpyHostToDevice) != cudaSuccess) {
+				MSG("updateBeta(): unable to copy X to device: %s\n", cudaGetErrorString(cudaGetLastError()));
+				return(false);
+			}
+
+			// copy host Y to device
+			if (cudaMemcpy(devy, mY, mN*sizeof(double), cudaMemcpyHostToDevice) != cudaSuccess) {
+				MSG("updateBeta(): unable to copy Y to device: %s\n", cudaGetErrorString(cudaGetLastError()));
+				return(false);
+			}
+
+			// initialize device data
+			if (cudaMemset(devXtS, 0, mNbeta*mN*sizeof(double)) != cudaSuccess) {
+				MSG("updateBeta(): unable to initialize X'inv(Sigma) on device\n");
+				return(false);
+			}
+
+			if (cudaMemset(devA, 0, mNbeta*mNbeta*sizeof(double)) != cudaSuccess) {
+				MSG("updateBeta(): unable to initialize A on device\n");
+				return(false);
+			}
+
+			if (cudaMemset(devb, 0, mNbeta*sizeof(double)) != cudaSuccess) {
+				MSG("updateBeta(): unable to initialize b on device\n");
+				return(false);
+			}
+
+			// compute X'inv(Sigma)
+			status = cublasDgemm(mCublasHandle, CUBLAS_OP_T, CUBLAS_OP_N, mNbeta, mN, mN,
+                           &p1, devX, mN, mDevSigma, mN, &p1, devXtS, mNbeta);
+      if (status != CUBLAS_STATUS_SUCCESS) {
+        MSG("updateBeta(): unable to call cublasDgemm(): %d\n", status);
+        return(false);
+      }
+
+			// compute A = X'inv(Sigma)X
+			status = cublasDgemm(mCublasHandle, CUBLAS_OP_N, CUBLAS_OP_N, mNbeta, mNbeta, mN,
+                           &p1, devXtS, mNbeta, devX, mN, &p1, devA, mNbeta);
+      if (status != CUBLAS_STATUS_SUCCESS) {
+        MSG("updateBeta(): unable to call cublasDgemm(): %d\n", status);
+        return(false);
+      }
+
+			// copy A from device
+			if (cudaMemcpy(mBeta_A, devA, mNbeta*mNbeta*sizeof(double), cudaMemcpyDeviceToHost) != cudaSuccess) {
+				MSG("updateBeta(): unable to copy A from device: %s\n", cudaGetErrorString(cudaGetLastError()));
+				return(false);
+			}
+
+			// compute b = X'inv(Sigma)y
+			status = cublasDgemv(mCublasHandle, CUBLAS_OP_N, mNbeta, mN,
+			                     &p1, devXtS, mNbeta, devy, i1, &p1, devb, i1);
+			if (status != CUBLAS_STATUS_SUCCESS) {
+				MSG("updateBeta(): unable to call cublasDgemv(): %d\n", status);
+				return(false);
+			}
+
+			// copy b from device
+			if (cudaMemcpy(mBeta_b, devb, mNbeta*sizeof(double), cudaMemcpyDeviceToHost) != cudaSuccess) {
+				MSG("updateBeta(): unable to copy b from device: %s\n", cudaGetErrorString(cudaGetLastError()));
+				return(false);
+			}
+
+			cudaFree(devX);
+			cudaFree(devXtS);
+			cudaFree(devy);
+			cudaFree(devA);
+			cudaFree(devb);
+		}
+#endif
 
 	} // end different likelihood forms
 
@@ -878,7 +981,7 @@ bool BlockComp::updateBeta() {
 		mBeta[i] = 0;
 
 		for (j = 0; j < mNbeta; j++) {
-			mBeta[i] += mBeta_A[symi(i,j)] * mBeta_b[j];
+			mBeta[i] += mBeta_A[usymi(i,j,mNbeta)] * mBeta_b[j];
 		}
 	}
 
@@ -887,9 +990,6 @@ bool BlockComp::updateBeta() {
 
 bool BlockComp::updateBetaPair(int pair, double *Sigma, double *A, double *b) {
 	// update specified pair of blocks
-	int i,j,k,l;
-	int selem,icol,jcol;
-
 	int blk1 = mNeighbors[pair];
 	int blk2 = mNeighbors[pair+mNpairs];
 	int N_in_pair = mNB[blk1] + mNB[blk2];
@@ -912,6 +1012,8 @@ bool BlockComp::updateBetaPair(int pair, double *Sigma, double *A, double *b) {
 		return(false);
 	}
 
+MSG("TODO: A and b for pair\n"); return(false);
+/*
 	// add contribution to A and b
 	for (i = 0; i < mNbeta; i++) {
 		icol = i*mN;
@@ -954,6 +1056,7 @@ bool BlockComp::updateBetaPair(int pair, double *Sigma, double *A, double *b) {
 
 		}
 	}
+*/
 
 	return(true);
 }
@@ -968,8 +1071,8 @@ void *BlockComp::updateBetaThread(void *work) {
 	int pair;
 
 	// initialize A and b for this thread
-	for (i = 0; i < symi(0,bc->mNbeta); i++) { bc->mBeta_A_t[id][i] = 0; }
-	for (i = 0; i < bc->mNbeta;         i++) { bc->mBeta_b_t[id][i] = 0; }
+	for (i = 0; i < bc->mNbeta*bc->mNbeta; i++) { bc->mBeta_A_t[id][i] = 0; }
+	for (i = 0; i < bc->mNbeta;            i++) { bc->mBeta_b_t[id][i] = 0; }
 
 	// process blocks
 	while (1) {
@@ -1016,7 +1119,7 @@ bool BlockComp::updateTheta() {
 
 	// initialize u and H
 	for (i = 0; i < mNtheta;         i++) { u[i] = 0; }
-	for (i = 0; i < symi(0,mNtheta); i++) { mTheta_H[i] = 0; }
+	for (i = 0; i < mNtheta*mNtheta; i++) { mTheta_H[i] = 0; }
 
 	if (mLikForm == Block) {
 		// update theta with block composite likelihood
@@ -1090,76 +1193,238 @@ bool BlockComp::updateTheta() {
 		// update theta using full likelihood
 
 		// note that updateBeta() already computes inv(Sigma) used here
-
-		// initialize residuals and q
 		for (i = 0; i < mN; i++) {
-			resids[i] = 0;
+			resids[i] = mY[i];
 			q[i]      = 0;
 		}
 
-		// compute resids = y - X'b
-		for (i = 0; i < mN; i++) {
-			for (j = 0; j < mNbeta; j++) {
-				resids[i] += mX[i + j*mN] * mBeta[j];
-			}
+#ifdef CUDA
+		if (!mGPU) {
+#endif
+			char   cN = 'N';
+			double p1 = 1.0;
+			double n1 = -1.0;
+			double z = 0;
+			int    i1 = 1;
 
-			resids[i] = mY[i] - resids[i];
-		}
+			// compute resids = y - Xb
+			dgemv_(&cN, &mN, &mNbeta, &n1, mX, &mN, mBeta, &i1, &p1, resids, &i1);
 
-		// compute q = inv(Sigma) x resids
-		for (i = 0; i < mN; i++) {
-			for (j = 0; j < mN; j++) {
-				if (mPacked) { c = symi(i,j); } else { c = fsymi(i,j,mN); }
-				q[i] += mSigma[0][c] * resids[j];
-			}
-		}
+			// compute q = inv(Sigma) x resids
+			dgemv_(&cN, &mN, &mN, &p1, mSigma[0], &mN, resids, &i1, &p1, q, &i1);
 
-		// fill in W and u
-		for (i = 0; i < mNtheta; i++) {
-			if (mFixed[i]) {
-				// this parameter is fixed, so skip these operations
-				continue;
-			}
+			// fill in W and u
+			// possible parallel: each of these is independent
+			for (i = 0; i < mNtheta; i++) {
+				if (mFixed[i]) {
+					// this parameter is fixed, so skip these operations
+					continue;
+				}
 
-			// get partial derivatives
-			mCov->partials(mTheta_P, &diag, i, mTheta, mThetaT, mN, mWithinD[0]);
+				// get partial derivatives
+				mCov->partials(mTheta_P, &diag, i, mTheta, mThetaT, mN, mWithinD[0]);
 
-			// initialize W[i]
-			for (j = 0; j < pow(mN, 2); j++) { mTheta_W[i][j] = 0; }
-
-			// compute inv(Sigma) x P
-			if (diag) {
-				// take advantage of P being diagonal
+				// fill in lower triangle
 				for (j = 0; j < mN; j++) {
-					for (k = 0; k < mN; k++) {
-						if (mPacked) { c = symi(j,k); } else { c = fsymi(j,k,mN); }
-						mTheta_W[i][j + k*mN] = mSigma[0][c] * mTheta_P[symi(k,k)];
+					for (k = j+1; k < mN; k++) {
+						mTheta_P[lsymi(j,k,mN)] = mTheta_P[usymi(j,k,mN)];
 					}
 				}
-			} else {
-				for (j = 0; j < mN; j++) {
-					for (k = 0; k < mN; k++) {
-						for (l = 0; l < mN; l++) {
-							if (mPacked) { c = symi(j,l); } else { c = fsymi(j,l,mN); }
-							mTheta_W[i][j + k*mN] += mSigma[0][c] * mTheta_P[symi(l,k)];
+
+				// compute inv(Sigma) x P
+				if (diag) {
+					// take advantage of P being diagonal
+
+					// initialize W[i]
+					memset(mTheta_W[i], 0, sizeof(double)*mN*mN);
+
+					for (j = 0; j < mN; j++) {
+						for (k = 0; k < mN; k++) {
+							mTheta_W[i][j + k*mN] = mSigma[0][usymi(j,k,mN)] * mTheta_P[usymi(k,k,mN)];
 						}
 					}
+				} else {
+					dgemm_(&cN, &cN, &mN, &mN, &mN, &p1, mSigma[0], &mN, mTheta_P, &mN, &z, mTheta_W[i], &mN);
+				}
+
+				// fill in u
+				for (j = 0; j < mN; j++) {
+					u[i] -= 0.5*mTheta_W[i][j+j*mN];
+				}
+
+				for (j = 0; j < mN; j++) {
+					u[i] += 0.5*mTheta_P[usymi(j,j,mN)] * q[j] * q[j];
+					for (k = j+1; k < mN; k++) {
+						u[i] += mTheta_P[usymi(j,k,mN)] * q[j] * q[k];
+					}
+				}
+			}
+#ifdef CUDA
+		} else {
+			// use GPU
+			double p1 = 1.0;
+			double n1 = -1.0;
+			int    i1 = 1;
+			cublasStatus_t status;
+
+			double *devX;
+			double *devBeta;
+			double *devResids;
+			double *devq;
+			double *devP;
+			double *devW;
+
+			// allocate space on device
+			if (cudaMalloc((void **)&devX, mN*mNbeta*sizeof(double)) != cudaSuccess) {
+				MSG("updateTheta(): unable to allocate space for X on device: %s\n", cudaGetErrorString(cudaGetLastError()));
+				return(false);
+			}
+
+			if (cudaMalloc((void **)&devBeta, mNbeta*sizeof(double)) != cudaSuccess) {
+				MSG("updateTheta(): unable to allocate space for resids on device: %s\n", cudaGetErrorString(cudaGetLastError()));
+				return(false);
+			}
+
+			if (cudaMalloc((void **)&devResids, mN*sizeof(double)) != cudaSuccess) {
+				MSG("updateTheta(): unable to allocate space for resids on device: %s\n", cudaGetErrorString(cudaGetLastError()));
+				return(false);
+			}
+
+			if (cudaMalloc((void **)&devq, mN*sizeof(double)) != cudaSuccess) {
+				MSG("updateTheta(): unable to allocate space for q on device: %s\n", cudaGetErrorString(cudaGetLastError()));
+				return(false);
+			}
+
+			if (cudaMalloc((void **)&devP, mN*mN*sizeof(double)) != cudaSuccess) {
+				MSG("updateTheta(): unable to allocate space for P on device: %s\n", cudaGetErrorString(cudaGetLastError()));
+				return(false);
+			}
+
+			if (cudaMalloc((void **)&devW, mN*mN*sizeof(double)) != cudaSuccess) {
+				MSG("updateTheta(): unable to allocate space for P on device: %s\n", cudaGetErrorString(cudaGetLastError()));
+				return(false);
+			}
+
+			// copy host data to device
+			if (cudaMemcpy(devX, mX, mN*mNbeta*sizeof(double), cudaMemcpyHostToDevice) != cudaSuccess) {
+				MSG("updateTheta(): unable to copy X to device: %s\n", cudaGetErrorString(cudaGetLastError()));
+				return(false);
+			}
+
+			if (cudaMemcpy(devBeta, mBeta, mNbeta*sizeof(double), cudaMemcpyHostToDevice) != cudaSuccess) {
+				MSG("updateTheta(): unable to copy beta to device: %s\n", cudaGetErrorString(cudaGetLastError()));
+				return(false);
+			}
+
+			if (cudaMemcpy(devResids, resids, mN*sizeof(double), cudaMemcpyHostToDevice) != cudaSuccess) {
+				MSG("updateTheta(): unable to copy resids to device: %s\n", cudaGetErrorString(cudaGetLastError()));
+				return(false);
+			}
+
+			if (cudaMemcpy(devq, q, mN*sizeof(double), cudaMemcpyHostToDevice) != cudaSuccess) {
+				MSG("updateTheta(): unable to copy q to device: %s\n", cudaGetErrorString(cudaGetLastError()));
+				return(false);
+			}
+
+			// compute resids = y - Xb
+			status = cublasDgemv(mCublasHandle, CUBLAS_OP_N, mN, mNbeta,
+			                     &n1, devX, mN, devBeta, i1, &p1, devResids, i1);
+			if (status != CUBLAS_STATUS_SUCCESS) {
+				MSG("updateTheta(): unable to call cublasDgemv(): %d\n", status);
+				return(false);
+			}
+
+			// compute q = inv(Sigma) x resids
+			status = cublasDgemv(mCublasHandle, CUBLAS_OP_N, mN, mN,
+			                     &p1, mDevSigma, mN, devResids, i1, &p1, devq, i1);
+			if (status != CUBLAS_STATUS_SUCCESS) {
+				MSG("updateTheta(): unable to call cublasDgemv(): %d\n", status);
+				return(false);
+			}
+
+			// get back q
+			if (cudaMemcpy(q, devq, mN*sizeof(double), cudaMemcpyDeviceToHost) != cudaSuccess) {
+				MSG("updateTheta(): unable to copy q to host: %s\n", cudaGetErrorString(cudaGetLastError()));
+				return(false);
+			}
+
+			// fill in W and u
+			// possible parallel: each of these is independent
+			for (i = 0; i < mNtheta; i++) {
+				if (mFixed[i]) {
+					// this parameter is fixed, so skip these operations
+					continue;
+				}
+
+				// get partial derivatives
+				mCov->partials(mTheta_P, &diag, i, mTheta, mThetaT, mN, mWithinD[0]);
+
+				// fill in lower triangle
+				for (j = 0; j < mN; j++) {
+					for (k = j+1; k < mN; k++) {
+						mTheta_P[lsymi(j,k,mN)] = mTheta_P[usymi(j,k,mN)];
+					}
+				}
+
+				// transfer P to device
+				if (cudaMemcpy(devP, mTheta_P, mN*mN*sizeof(double), cudaMemcpyHostToDevice) != cudaSuccess) {
+					MSG("updateTheta(): unable to copy P to device: %s\n", cudaGetErrorString(cudaGetLastError()));
+					return(false);
+				}
+
+				// initialize W[i]
+				if (cudaMemset(devW, 0, mN*mN*sizeof(double)) != cudaSuccess) {
+					MSG("updateTheta(): unable to initialize W on device\n");
+					return(false);
+				}
+
+				// compute inv(Sigma) x P
+				if (diag) {
+					// take advantage of P being diagonal
+					for (j = 0; j < mN; j++) {
+						for (k = 0; k < mN; k++) {
+							mTheta_W[i][j + k*mN] = mSigma[0][usymi(j,k,mN)] * mTheta_P[usymi(k,k,mN)];
+						}
+					}
+				} else {
+					status = cublasDgemm(mCublasHandle, CUBLAS_OP_N, CUBLAS_OP_N, mN, mN, mN,
+		                           &p1, mDevSigma, mN, devP, mN, &p1, devW, mN);
+		      if (status != CUBLAS_STATUS_SUCCESS) {
+		        MSG("updateTheta(): unable to call cublasDgemm(): %d\n", status);
+		        return(false);
+		      }
+
+					if (cudaMemcpy(mTheta_W[i], devW, mN*mN*sizeof(double), cudaMemcpyDeviceToHost) != cudaSuccess) {
+						MSG("updateTheta(): unable to copy W to host: %s\n", cudaGetErrorString(cudaGetLastError()));
+						return(false);
+					}
+				}
+
+				// fill in u
+				for (j = 0; j < mN; j++) {
+					u[i] -= 0.5*mTheta_W[i][j+j*mN];
+				}
+
+				for (j = 0; j < mN; j++) {
+					u[i] += 0.5*mTheta_P[usymi(j,j,mN)] * q[j] * q[j];
+					for (k = j+1; k < mN; k++) {
+						u[i] += mTheta_P[usymi(j,k,mN)] * q[j] * q[k];
+					}
 				}
 			}
 
-			// fill in u
-			for (j = 0; j < mN; j++) {
-				u[i] -= 0.5*mTheta_W[i][j+j*mN];
-			}
+			cudaFree(devX);
+			cudaFree(devBeta);
+			cudaFree(devResids);
+			cudaFree(devq);
+			cudaFree(devP);
+			cudaFree(devW);
 
-			for (j = 0; j < mN; j++) {
-				u[i] += 0.5*mTheta_P[symi(j,j)] * q[j] * q[j];
-				for (k = j+1; k < mN; k++) {
-					u[i] += mTheta_P[symi(j,k)] * q[j] * q[k];
-				}
-			}
+#endif
 
+#ifdef CUDA
 		}
+#endif
 
 		// compute hessian
 		iH = 0;
@@ -1170,7 +1435,7 @@ bool BlockComp::updateTheta() {
 			for (j = i; j < mNtheta; j++) {
 				if (mFixed[j]) { continue; }
 
-				c = symi(iH,jH);
+				c = usymi(iH,jH,mNtheta-mNfixed);
 
 				// add in diagonal elements of W[i] x W[j]
 				for (k = 0; k < mN; k++) {
@@ -1185,10 +1450,10 @@ bool BlockComp::updateTheta() {
 			iH++;
 		}
 
-	}
+	} // end different likelihood forms
 
 	// hessian elements should be scaled by 1/2
-	for (i = 0; i < symi(0, mNtheta-mNfixed); i++) {
+	for (i = 0; i < mNtheta*mNtheta; i++) {
 		mTheta_H[i] *= 0.5;
 	}
 
@@ -1207,7 +1472,7 @@ bool BlockComp::updateTheta() {
 		for (j = 0; j < mNtheta; j++) {
 			if (mFixed[j]) { continue; }
 
-			mThetaT[i] += mTheta_H[symi(iH,jH)] * u[j];
+			mThetaT[i] += mTheta_H[usymi(iH,jH,mNtheta-mNfixed)] * u[j];
 
 			jH++;
 		}
@@ -1417,16 +1682,6 @@ void BlockComp::getTheta(double *theta) {
 void test_bc(int nthreads, bool gpu) {
 	BlockComp blk(nthreads, gpu);
 
-	// start blocks at 0
-	int i;
-	for (i = 0; i < test_n; i++) {
-		test_B[i]--;
-	}
-
-	for (i = 0; i < test_npairs*2; i++) {
-		test_neighbors[i]--;
-	}
-
 	//blk.setLikForm(BlockComp::Block);
 	blk.setLikForm(BlockComp::Full);
 	blk.setCovType(BlockComp::Exp);
@@ -1451,9 +1706,28 @@ void test_bc(int nthreads, bool gpu) {
 }
 
 int main(void) {
+	// start blocks at 0
+	int i;
+	for (i = 0; i < test_n; i++) {
+		test_B[i]--;
+	}
+
+	for (i = 0; i < test_npairs*2; i++) {
+		test_neighbors[i]--;
+	}
+
+	clock_t t1;
+
+	MSG("GPU\n");
+	t1 = clock();
 	test_bc(1, true);
-	//test_bc(1, true);
-	//test_bc(1, true);
+	MSG("--> Done (%.2fsec)\n", (double)(clock() - t1)/CLOCKS_PER_SEC);
+
+	MSG("=========================================================================\n");
+	MSG("CPU\n");
+	t1 = clock();
+	test_bc(1, false);
+	MSG("--> Done (%.2fsec)\n", (double)(clock() - t1)/CLOCKS_PER_SEC);
 
 	return(0);
 }

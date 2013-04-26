@@ -90,7 +90,7 @@ private:
 
 	bool   mGPU;         // use GPU?
 	bool   mConsMem;     // should memory be conserved?
-	bool   mPacked;      // use packed storage?
+	bool   mConsMemGPU;  // should we conserve GPU memory?
 	bool   mHasFit;      // do we have a fit?
 	bool   mConverged;   // did the fit converge?
 	int    mIters;       // number of iters through fit

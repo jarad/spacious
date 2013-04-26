@@ -8,8 +8,8 @@ void Cov::compute(double *Sigma, double *theta, int n, double *D, bool packed) {
 }
 
 // compute partials for a single block of locations
-void Cov::partials(double *P, bool *diag, int param, double *theta, double *thetaT, int n, double *D) {
-  partials(P, diag, param, theta, thetaT, n, D, 0, NULL, NULL);
+void Cov::partials(double *P, bool *diag, int param, double *theta, double *thetaT, int n, double *D, bool packed) {
+  partials(P, diag, param, theta, thetaT, n, D, 0, NULL, NULL, packed);
 }
 
 /*
@@ -27,22 +27,22 @@ void CovExp::compute(double *Sigma, double *theta, int n1, double *D1, int n2, d
 	int n = n1+n2;
 
 	for (i = 0; i < n1; i++) {
-		if (packed) { index = symi(i,i); } else { index = fsymi(i,i,n); }
+		if (packed) { index = symi(i,i); } else { index = usymi(i,i,n); }
 		Sigma[index] = theta[0] + theta[1];
 
 		for (j = i+1; j < n1; j++) {
-			if (packed) { index = symi(i,j); } else { index = fsymi(i,j,n); }
+			if (packed) { index = symi(i,j); } else { index = usymi(i,j,n); }
 			Sigma[index] = theta[1] * exp(-D1[symi(i,j)]/theta[2]);
 		}
 	}
 
 	if (n2 > 0) {
 		for (i = 0; i < n2; i++) {
-			if (packed) { index = symi(i+n1,i+n1); } else { index = fsymi(i+n1,i+n1,n); }
+			if (packed) { index = symi(i+n1,i+n1); } else { index = usymi(i+n1,i+n1,n); }
 			Sigma[index] = theta[0] + theta[1];
 
 			for (j = i+1; j < n2; j++) {
-				if (packed) { index = symi(i+n1,j+n1); } else { index = fsymi(i+n1,j+n1,n); }
+				if (packed) { index = symi(i+n1,j+n1); } else { index = usymi(i+n1,j+n1,n); }
 				Sigma[index] = theta[1] * exp(-D2[symi(i,j)]/theta[2]);
 			}
 		}
@@ -50,7 +50,7 @@ void CovExp::compute(double *Sigma, double *theta, int n1, double *D1, int n2, d
 		// cross terms
 		for (i = 0; i < n1; i++) {
 			for (j = 0; j < n2; j++) {
-				if (packed) { index = symi(i,j+n1); } else { index = fsymi(i,j+n1,n); }
+				if (packed) { index = symi(i,j+n1); } else { index = usymi(i,j+n1,n); }
 				Sigma[index] = theta[1] * exp(-Dc[i + j*n1]/theta[2]);
 			}
 		}
@@ -58,32 +58,39 @@ void CovExp::compute(double *Sigma, double *theta, int n1, double *D1, int n2, d
 }
 
 void CovExp::partials(double *P, bool *diag, int param, double *theta, double *thetaT,
-                      int n1, double *D1, int n2, double *D2, double *Dc) {
+                      int n1, double *D1, int n2, double *D2, double *Dc, bool packed) {
 	int i,j;
+	int index;
+	int n = n1+n2;
 
 	switch(param) {
 		case 0:   // nugget
 			for (i = 0; i < n1; i++) {
-				P[symi(i,i)] = theta[0];
+				if (packed) { index = symi(i,i); } else { index = usymi(i,i,n); }
+				P[index] = theta[0];
 
 				for (j = i+1; j < n1; j++) {
-					P[symi(i,j)] = 0;
+					if (packed) { index = symi(i,j); } else { index = usymi(i,j,n); }
+					P[index] = 0;
 				}
 			}
 
 			if (n2 > 0) {
 				for (i = 0; i < n2; i++) {
-					P[symi(i+n1,i+n1)] = theta[0];
+					if (packed) { index = symi(i+n1,i+n1); } else { index = usymi(i+n1,i+n1,n); }
+					P[index] = theta[0];
 
 					for (j = i+1; j < n2; j++) {
-						P[symi(i+n1,j+n1)] = 0;
+						if (packed) { index = symi(i+n1,j+n1); } else { index = usymi(i+n1,j+n1,n); }
+						P[index] = 0;
 					}
 				}
 
 				// fill in cross terms
 				for (i = 0; i < n1; i++) {
 					for (j = 0; j < n2; j++) {
-						P[symi(i,j+n1)] = 0;
+						if (packed) { index = symi(i,j+n1); } else { index = usymi(i,j+n1,n); }
+						P[index] = 0;
 					}
 				}
 			}
@@ -93,27 +100,30 @@ void CovExp::partials(double *P, bool *diag, int param, double *theta, double *t
 
 		case 1:   // partial sill
 			for (i = 0; i < n1; i++) {
-				P[symi(i,i)] = theta[1];
+				if (packed) { index = symi(i,i); } else { index = usymi(i,i,n); }
+				P[index] = theta[1];
 
 				for (j = i+1; j < n1; j++) {
-					P[symi(i,j)] = theta[1]*exp(-D1[symi(i,j)]/theta[2]);
+					if (packed) { index = symi(i,j); } else { index = usymi(i,j,n); }
+					P[index] = theta[1]*exp(-D1[symi(i,j)]/theta[2]);
 				}
 			}
 
 			if (n2 > 0) {
 				for (i = 0; i < n2; i++) {
-					P[symi(i+n1,i+n1)] = theta[1];
+					if (packed) { index = symi(i+n1,i+n1); } else { index = usymi(i+n1,i+n1,n); }
+					P[index] = theta[1];
 
 					for (j = i+1; j < n2; j++) {
-						P[symi(i+n1,j+n1)] = theta[1]*exp(-D2[symi(i,j)]/theta[2]);
+						if (packed) { index = symi(i+n1,j+n1); } else { index = usymi(i+n1,j+n1,n); }
+						P[index] = theta[1]*exp(-D2[symi(i,j)]/theta[2]);
 					}
 				}
 
-				if (Dc != NULL) {
-					for (i = 0; i < n1; i++) {
-						for (j = 0; j < n2; j++) {
-							P[symi(i,j+n1)] = theta[1]*exp(-Dc[i+j*n1]/theta[2]);
-						}
+				for (i = 0; i < n1; i++) {
+					for (j = 0; j < n2; j++) {
+						if (packed) { index = symi(i,j+n1); } else { index = usymi(i,j+n1,n); }
+						P[index] = theta[1]*exp(-Dc[i+j*n1]/theta[2]);
 					}
 				}
 			}
@@ -123,27 +133,30 @@ void CovExp::partials(double *P, bool *diag, int param, double *theta, double *t
 
 		case 2:   // range
 			for (i = 0; i < n1; i++) {
-				P[symi(i,i)] = 0;
+				if (packed) { index = symi(i,i); } else { index = usymi(i,i,n); }
+				P[index] = 0;
 
 				for (j = i+1; j < n1; j++) {
-					P[symi(i,j)] = -exp(thetaT[1]+thetaT[2]) * D1[symi(i,j)] * exp(-D1[symi(i,j)]/theta[2]);
+					if (packed) { index = symi(i,j); } else { index = usymi(i,j,n); }
+					P[index] = -exp(thetaT[1]+thetaT[2]) * D1[symi(i,j)] * exp(-D1[symi(i,j)]/theta[2]);
 				}
 			}
 
 			if (n2 > 0) {
 				for (i = 0; i < n2; i++) {
-					P[symi(i+n1,i+n1)] = 0;
+					if (packed) { index = symi(i+n1,i+n1); } else { index = usymi(i+n1,i+n1,n); }
+					P[index] = 0;
 
 					for (j = i+1; j < n2; j++) {
-						P[symi(i+n1,j+n1)] = -exp(thetaT[1]+thetaT[2]) * D2[symi(i,j)] * exp(-D2[symi(i,j)]/theta[2]);
+						if (packed) { index = symi(i+n1,j+n1); } else { index = usymi(i+n1,j+n1,n); }
+						P[index] = -exp(thetaT[1]+thetaT[2]) * D2[symi(i,j)] * exp(-D2[symi(i,j)]/theta[2]);
 					}
 				}
 
-				if (Dc != NULL) {
-					for (i = 0; i < n1; i++) {
-						for (j = 0; j < n2; j++) {
-							P[symi(i,j+n1)] = -exp(thetaT[1]+thetaT[2]) * Dc[i+j*n1] * exp(-Dc[i+j*n1]/theta[2]);
-						}
+				for (i = 0; i < n1; i++) {
+					for (j = 0; j < n2; j++) {
+						if (packed) { index = symi(i,j+n1); } else { index = usymi(i,j+n1,n); }
+						P[index] = -exp(thetaT[1]+thetaT[2]) * Dc[i+j*n1] * exp(-Dc[i+j*n1]/theta[2]);
 					}
 				}
 			}

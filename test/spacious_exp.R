@@ -12,7 +12,7 @@ require(spacious)
 set.seed(311)
 
 # generate data to use for fitting a block composite model
-n <- 5000
+n <- 2*1024
 np <- 5   # number to predict
 
 # generate spatial locations S
@@ -57,6 +57,15 @@ time.spacious <- proc.time()
 #fit.spacious <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="exp", nblocks=2^2, verbose=TRUE)
 #fit.spacious <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="exp", blocks=list(type="regular", nblocks=2^2), verbose=TRUE)
 #fit.spacious <- spacious(y.fit~X.fit, S=S.fit, cov="exp", blocks=list(type="regular", nblocks=2^2), verbose=TRUE)
+
+if (FALSE) {
+# try this 500 times
+for (i in 1:500) {
+	fit.spacious <- spacious(y~x, data=data.frame(y=y[1:n], x=x1[1:n]), S=S[1:n,], cov="exp", blocks=list(type="full"), nthreads=1, gpu=TRUE, verbose=TRUE)
+	print(fit.spacious$time)
+}
+done
+}
 
 fit.spacious <- spacious(y~x, data=data.frame(y=y[1:n], x=x1[1:n]), S=S[1:n,], cov="exp", blocks=list(type="full"), nthreads=1, gpu=TRUE, verbose=TRUE)
 print(fit.spacious$time)

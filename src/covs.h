@@ -15,8 +15,8 @@ public:
 	// computes covariance matrix
 	// - D1 is n1 by n1 holding distances between locations of interest
 	// - Optionally, n2/D2 and nc/Dc can be used for filling in partials for a 2nd distance matrix and cross terms
-	virtual void compute(double *Sigma, double *theta, int n, double *D, bool packed);
-	virtual void compute(double *Sigma, double *theta, int n1, double *D1, int n2, double *D2, double *Dc, bool packed) = 0;
+	virtual void compute(double *Sigma, double *theta, int n, double *D, bool packed = false);
+	virtual void compute(double *Sigma, double *theta, int n1, double *D1, int n2, double *D2, double *Dc, bool packed = false) = 0;
 
 	// obtain partial derivatives for parameters (in terms of on real line scale)
 	// - Fills matrix of patrial derivatives P with respect to param
@@ -24,9 +24,9 @@ public:
 	// - D1 is n1 by n1 holding distances between locations of interest
 	// - Optionally, n2/D2 and nc/Dc can be used for filling in partials for a 2nd distance matrix and cross terms
 	// - diag returns true if P is diagonal and false otherwise
-	virtual void partials(double *P, bool *diag, int param, double *theta, double *thetaT, int n, double *D);
+	virtual void partials(double *P, bool *diag, int param, double *theta, double *thetaT, int n, double *D, bool packed = false);
 	virtual void partials(double *P, bool *diag, int param, double *theta, double *thetaT,
-	                      int n1, double *D1, int n2, double *D2, double *Dc) = 0;
+	                      int n1, double *D1, int n2, double *D2, double *Dc, bool packed = false) = 0;
 
 	// transform params to real line
 	virtual void transformToReal(double *theta) = 0;
@@ -42,9 +42,9 @@ class CovExp : public Cov {
 public:
 	CovExp();
 
-	virtual void compute(double *Sigma, double *theta, int n1, double *D1, int n2, double *D2, double *Dc, bool packed);
+	virtual void compute(double *Sigma, double *theta, int n1, double *D1, int n2, double *D2, double *Dc, bool packed = false);
 	virtual void partials(double *P, bool *diag, int param, double *theta, double *thetaT,
-	                      int n1, double *D1, int n2, double *D2, double *Dc);
+	                      int n1, double *D1, int n2, double *D2, double *Dc, bool packed = false);
 	virtual void transformToReal(double *theta);
 	virtual void transformFromReal(double *theta);
 

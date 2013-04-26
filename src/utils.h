@@ -30,7 +30,7 @@ inline int symi(int a, int b) {
 }
 
 // full (non-packed) symmetric matrix indexing for upper triangle
-inline int fsymi(int a, int b, int n) {
+inline int usymi(int a, int b, int n) {
 	if (a <= b) {
 		return(a + b*n);
 	} else {
@@ -38,6 +38,16 @@ inline int fsymi(int a, int b, int n) {
 	}
 }
 
+// full (non-packed) symmetric matrix indexing for lower triangle
+inline int lsymi(int a, int b, int n) {
+	if (a <= b) {
+		return(b + a*n);
+	} else {
+		return(a + b*n);
+	}
+}
+
+// get minimum of two integers
 inline int imin(int a, int b) {
 	if (a < b) {
 		return(a);
@@ -49,5 +59,6 @@ inline int imin(int a, int b) {
 // function definitions
 int chol2inv(int n, double *A);
 void disp_sym(double *mat, int lo, int hi);
+void disp_usym(double *mat, int lo, int hi, int n);
 
 #endif

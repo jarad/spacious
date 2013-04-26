@@ -85,14 +85,14 @@ void cuda_dpotrf(cublasHandle_t handle, int n, double *A, int *info) {
 
 		// perform update for this block
 		status = cublasDsyrk(handle, CUBLAS_FILL_MODE_UPPER, CUBLAS_OP_T, ibs, i,
-		                     &n1, &A[fsymi(0,i,n)], n, &p1, &A[fsymi(i,i,n)], n);
+		                     &n1, &A[usymi(0,i,n)], n, &p1, &A[usymi(i,i,n)], n);
 		if (status != CUBLAS_STATUS_SUCCESS) {
 			MSG("cuda_dpotrf(): unable to call cublasDsyrk(): %d\n", status);
 			*info = -1;
 			break;
 		}
 
-		status = cublasGetMatrixAsync(ibs, ibs, sizeof(double), &A[fsymi(i,i,n)], n, work, ibs, streams[1]);
+		status = cublasGetMatrixAsync(ibs, ibs, sizeof(double), &A[usymi(i,i,n)], n, work, ibs, streams[1]);
 		if (status != CUBLAS_STATUS_SUCCESS) {
 			MSG("cuda_dpotrf(): unable to call cublasGetMatrixAsync(): %d\n", status);
 			*info = -1;
@@ -102,7 +102,7 @@ void cuda_dpotrf(cublasHandle_t handle, int n, double *A, int *info) {
 		if ((i+ibs) < n) {
 			// operate on row for this block
 			status = cublasDgemm(handle, CUBLAS_OP_T, CUBLAS_OP_N, ibs, n-i-ibs, i,
-			                     &n1, &A[fsymi(0,i,n)], n, &A[fsymi(0,i+ibs,n)], n, &p1, &A[fsymi(i,i+ibs,n)], n);
+			                     &n1, &A[usymi(0,i,n)], n, &A[usymi(0,i+ibs,n)], n, &p1, &A[usymi(i,i+ibs,n)], n);
 			if (status != CUBLAS_STATUS_SUCCESS) {
 				MSG("cuda_dpotrf(): unable to call cublasDgemm(): %d\n", status);
 				*info = -1;
@@ -125,7 +125,7 @@ void cuda_dpotrf(cublasHandle_t handle, int n, double *A, int *info) {
 			break;
 		}
 
-		status = cublasSetMatrixAsync(ibs, ibs, sizeof(double), work, ibs, &A[fsymi(i,i,n)], n, streams[0]);
+		status = cublasSetMatrixAsync(ibs, ibs, sizeof(double), work, ibs, &A[usymi(i,i,n)], n, streams[0]);
 		if (status != CUBLAS_STATUS_SUCCESS) {
 			MSG("cuda_dpotrf(): unable to call cublasSetMatrixAsync(): %d\n", status);
 			*info = -1;
@@ -135,7 +135,7 @@ void cuda_dpotrf(cublasHandle_t handle, int n, double *A, int *info) {
 		if ((i+ibs) < n) {
 			// run the triangular solve
 			status = cublasDtrsm(handle, CUBLAS_SIDE_LEFT, CUBLAS_FILL_MODE_UPPER, CUBLAS_OP_T, CUBLAS_DIAG_NON_UNIT,
-				                     ibs, n-i-ibs, &p1, &A[fsymi(i,i,n)], n, &A[fsymi(i,i+ibs,n)], n);
+				                     ibs, n-i-ibs, &p1, &A[usymi(i,i,n)], n, &A[usymi(i,i+ibs,n)], n);
 			if (status != CUBLAS_STATUS_SUCCESS) {
 				MSG("cuda_dpotrf(): unable to call cublasDtrsm(): %d\n", status);
 				*info = -1;
@@ -204,7 +204,7 @@ void cuda_dtrtri(cublasHandle_t handle, cublasDiagType_t diag, int n, double *A,
 		ibs = imin(bs, n-i);
 
 		status = cublasDtrmm(handle, CUBLAS_SIDE_LEFT, CUBLAS_FILL_MODE_UPPER, CUBLAS_OP_N, CUBLAS_DIAG_NON_UNIT,
-		                     i, ibs, &p1, &A[0], lda, &A[fsymi(0,i,n)], lda, &A[fsymi(0,i,n)], lda);
+		                     i, ibs, &p1, &A[0], lda, &A[usymi(0,i,n)], lda, &A[usymi(0,i,n)], lda);
 			if (status != CUBLAS_STATUS_SUCCESS) {
 				MSG("cuda_dtrtri(): unable to call cublasDtrmm(): %d\n", status);
 				*info = -1;
@@ -212,14 +212,14 @@ void cuda_dtrtri(cublasHandle_t handle, cublasDiagType_t diag, int n, double *A,
 			}
 
 		status = cublasDtrsm(handle, CUBLAS_SIDE_RIGHT, CUBLAS_FILL_MODE_UPPER, CUBLAS_OP_N, CUBLAS_DIAG_NON_UNIT,
-		                     i, ibs, &n1, &A[fsymi(i,i,n)], lda, &A[fsymi(0,i,n)], lda);
+		                     i, ibs, &n1, &A[usymi(i,i,n)], lda, &A[usymi(0,i,n)], lda);
 			if (status != CUBLAS_STATUS_SUCCESS) {
 				MSG("cuda_dtrtri(): unable to call cublasDtrsm(): %d\n", status);
 				*info = -1;
 				break;
 			}
 
-		status = cublasGetMatrixAsync(ibs, ibs, sizeof(double), &A[fsymi(i,i,n)], lda, work, ibs, streams[1]);
+		status = cublasGetMatrixAsync(ibs, ibs, sizeof(double), &A[usymi(i,i,n)], lda, work, ibs, streams[1]);
 		if (status != CUBLAS_STATUS_SUCCESS) {
 			MSG("cuda_dtrtri(): unable to call cublasGetMatrixAsync(): %d\n", status);
 			*info = -1;
@@ -240,7 +240,7 @@ void cuda_dtrtri(cublasHandle_t handle, cublasDiagType_t diag, int n, double *A,
 			break;
 		}
 
-		status = cublasSetMatrixAsync(ibs, ibs, sizeof(double), work, ibs, &A[fsymi(i,i,n)], n, streams[0]);
+		status = cublasSetMatrixAsync(ibs, ibs, sizeof(double), work, ibs, &A[usymi(i,i,n)], n, streams[0]);
 		if (status != CUBLAS_STATUS_SUCCESS) {
 			MSG("cuda_dtrtri(): unable to call cublasSetMatrixAsync(): %d\n", status);
 			*info = -1;
@@ -285,14 +285,14 @@ void cuda_dlauum(cublasHandle_t handle, int n, double *A, int lda, int *info) {
 		ibs = imin(bs, n-i);
 
 		status = cublasDtrmm(handle, CUBLAS_SIDE_RIGHT, CUBLAS_FILL_MODE_UPPER, CUBLAS_OP_T, CUBLAS_DIAG_NON_UNIT,
-		                     i, ibs, &p1, &A[fsymi(i,i,n)], lda, &A[fsymi(0,i,n)], lda, &A[fsymi(0,i,n)], lda);
+		                     i, ibs, &p1, &A[usymi(i,i,n)], lda, &A[usymi(0,i,n)], lda, &A[usymi(0,i,n)], lda);
 			if (status != CUBLAS_STATUS_SUCCESS) {
 				MSG("cuda_dlauum(): unable to call cublasDtrmm(): %d\n", status);
 				*info = -1;
 				break;
 			}
 
-		status = cublasGetMatrix(ibs, ibs, sizeof(double), &A[fsymi(i,i,n)], lda, work, ibs);
+		status = cublasGetMatrix(ibs, ibs, sizeof(double), &A[usymi(i,i,n)], lda, work, ibs);
 		if (status != CUBLAS_STATUS_SUCCESS) {
 			MSG("cuda_dlauum(): unable to call cublasGetMatrix(): %d\n", status);
 			*info = -1;
@@ -307,7 +307,7 @@ void cuda_dlauum(cublasHandle_t handle, int n, double *A, int lda, int *info) {
 			break;
 		}
 
-		status = cublasSetMatrix(ibs, ibs, sizeof(double), work, ibs, &A[fsymi(i,i,n)], lda);
+		status = cublasSetMatrix(ibs, ibs, sizeof(double), work, ibs, &A[usymi(i,i,n)], lda);
 		if (status != CUBLAS_STATUS_SUCCESS) {
 			MSG("cuda_dlauum(): unable to call cublasSetMatrix(): %d\n", status);
 			*info = -1;
@@ -316,7 +316,7 @@ void cuda_dlauum(cublasHandle_t handle, int n, double *A, int lda, int *info) {
 
 		if ((i+ibs) < n) {
 			status = cublasDgemm(handle, CUBLAS_OP_N, CUBLAS_OP_T, i, ibs, n-i-ibs,
-			                     &p1, &A[fsymi(0,i+ibs,n)], lda, &A[fsymi(i,i+ibs,n)], lda, &p1, &A[fsymi(0,i,n)], lda);
+			                     &p1, &A[usymi(0,i+ibs,n)], lda, &A[usymi(i,i+ibs,n)], lda, &p1, &A[usymi(0,i,n)], lda);
 			if (status != CUBLAS_STATUS_SUCCESS) {
 				MSG("cuda_dlauum(): unable to call cublasDgemm(): %d\n", status);
 				*info = -1;
@@ -324,7 +324,7 @@ void cuda_dlauum(cublasHandle_t handle, int n, double *A, int lda, int *info) {
 			}
 
 			status = cublasDsyrk(handle, CUBLAS_FILL_MODE_UPPER, CUBLAS_OP_N, ibs, n-i-ibs,
-		                     &p1, &A[fsymi(i,i+ibs,n)], lda, &p1, &A[fsymi(i,i,n)], lda);
+		                     &p1, &A[usymi(i,i+ibs,n)], lda, &p1, &A[usymi(i,i,n)], lda);
 			if (status != CUBLAS_STATUS_SUCCESS) {
 				MSG("cuda_dlauum(): unable to call cublasDsyrk(): %d\n", status);
 				*info = -1;
