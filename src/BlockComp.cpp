@@ -1173,8 +1173,8 @@ bool BlockComp::updateTheta() {
 
 			// combine results from each thread
 			for (j = 0; j < mNthreads; j++) {
-				for (i = 0; i < symi(0, mNtheta-mNfixed); i++) { mTheta_H[i] += mTheta_H_t[j][i]; }
-				for (i = 0; i < mNtheta;                  i++) { u[i]        += mTheta_u_t[j][i]; }
+				for (i = 0; i < mNtheta*mNtheta; i++) { mTheta_H[i] += mTheta_H_t[j][i]; }
+				for (i = 0; i < mNtheta;         i++) { u[i]        += mTheta_u_t[j][i]; }
 			}
 		}
 #endif
@@ -1642,8 +1642,8 @@ void *BlockComp::updateThetaThread(void *work) {
 	double q[bc->mMaxPair];
 
 	// initialize u and H for this thread
-	for (i = 0; i < bc->mNtheta;         i++) { bc->mTheta_u_t[id][i] = 0; }
-	for (i = 0; i < symi(0,bc->mNtheta); i++) { bc->mTheta_H_t[id][i] = 0; }
+	for (i = 0; i < bc->mNtheta;             i++) { bc->mTheta_u_t[id][i] = 0; }
+	for (i = 0; i < bc->mNtheta*bc->mNtheta; i++) { bc->mTheta_H_t[id][i] = 0; }
 
 	// process blocks
 	while (1) {
@@ -1691,8 +1691,8 @@ void BlockComp::getTheta(double *theta) {
 void test_bc(int nthreads, bool gpu) {
 	BlockComp blk(nthreads, gpu);
 
-	//blk.setLikForm(BlockComp::Block);
-	blk.setLikForm(BlockComp::Full);
+	blk.setLikForm(BlockComp::Block);
+	//blk.setLikForm(BlockComp::Full);
 	blk.setCovType(BlockComp::Exp);
 
 	if (!blk.setData(test_n, test_y, test_S, test_nblocks, test_B, test_p, test_X, test_npairs, test_neighbors)) {
@@ -1728,7 +1728,7 @@ int main(void) {
 	clock_t t1;
 	MSG("GPU\n");
 	t1 = clock();
-	test_bc(1, true);
+	test_bc(4, false);
 	MSG("--> Done (%.2fsec)\n", (double)(clock() - t1)/CLOCKS_PER_SEC);
 	MSG("=========================================================================\n");
 /*
