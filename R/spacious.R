@@ -6,7 +6,7 @@
 	fixed=list(smoothness=0.5),             # fixed parameters
 	blocks=list(type="cluster"),            # blocking style
 	verbose=FALSE, tol=1e-3, maxIter=100,   # algorithm control params
-	nthreads=1, gpu=TRUE,
+	nthreads=1, gpu=FALSE,
 	engine="C"                              # use C or R implementation?
 ) {
 
