@@ -993,10 +993,11 @@ bool BlockComp::updateBetaPair(int pair, double *Sigma, double *A, double *b) {
 	int blk1 = mNeighbors[pair];
 	int blk2 = mNeighbors[pair+mNpairs];
 	int N_in_pair = mNB[blk1] + mNB[blk2];
+	int i,j,icol,jcol,k,l,selem;
 
 	if (!mConsMem) {
 		// fill in covariance matrix between these two blocks
-		mCov->compute(Sigma, mTheta, mNB[blk1], mWithinD[blk1], mNB[blk2], mWithinD[blk2], mBetweenD[pair], true);
+		mCov->compute(Sigma, mTheta, mNB[blk1], mWithinD[blk1], mNB[blk2], mWithinD[blk2], mBetweenD[pair]);
 	} else {
 		// we're conserving memory
 
@@ -1012,51 +1013,48 @@ bool BlockComp::updateBetaPair(int pair, double *Sigma, double *A, double *b) {
 		return(false);
 	}
 
-MSG("TODO: A and b for pair\n"); return(false);
-/*
 	// add contribution to A and b
 	for (i = 0; i < mNbeta; i++) {
 		icol = i*mN;
 
 		for (j = i; j < mNbeta; j++) {
-			selem = symi(i,j);
+			selem = usymi(i,j,mNbeta);
 			jcol  = j*mN;
 
 			for (k = 0; k < mNB[blk1]; k++) {     // block 1...
 				for (l = 0; l < mNB[blk1]; l++) {   // with block 1
-					A[selem] += mX[mWhichB[blk1][l] + icol] * Sigma[symi(l,k)] * mX[mWhichB[blk1][k] + jcol];
+					A[selem] += mX[mWhichB[blk1][l] + icol] * Sigma[usymi(l,k,N_in_pair)] * mX[mWhichB[blk1][k] + jcol];
 					if (i == j) {
-						b[i] += mX[mWhichB[blk1][l] + icol] * Sigma[symi(l,k)] * mY[mWhichB[blk1][k]];
+						b[i] += mX[mWhichB[blk1][l] + icol] * Sigma[usymi(l,k,N_in_pair)] * mY[mWhichB[blk1][k]];
 					}
 				}
 
 				for (l = 0; l < mNB[blk2]; l++) {   // with block 2
-					A[selem] += mX[mWhichB[blk2][l] + icol] * Sigma[symi(l+mNB[blk1],k)] * mX[mWhichB[blk1][k] + jcol];
+					A[selem] += mX[mWhichB[blk2][l] + icol] * Sigma[usymi(l+mNB[blk1],k,N_in_pair)] * mX[mWhichB[blk1][k] + jcol];
 					if (i == j) {
-						b[i] += mX[mWhichB[blk2][l] + icol] * Sigma[symi(l+mNB[blk1],k)] * mY[mWhichB[blk1][k]];
+						b[i] += mX[mWhichB[blk2][l] + icol] * Sigma[usymi(l+mNB[blk1],k,N_in_pair)] * mY[mWhichB[blk1][k]];
 					}
 				}
 			}
 
 			for (k = 0; k < mNB[blk2]; k++) {     // block 2...
 				for (l = 0; l < mNB[blk1]; l++) {   // with block 1
-					A[selem] += mX[mWhichB[blk1][l] + icol] * Sigma[symi(l,k+mNB[blk1])] * mX[mWhichB[blk2][k] + jcol];
+					A[selem] += mX[mWhichB[blk1][l] + icol] * Sigma[usymi(l,k+mNB[blk1],N_in_pair)] * mX[mWhichB[blk2][k] + jcol];
 					if (i == j) {
-						b[i] += mX[mWhichB[blk1][l] + icol] * Sigma[symi(l,k+mNB[blk1])] * mY[mWhichB[blk2][k]];
+						b[i] += mX[mWhichB[blk1][l] + icol] * Sigma[usymi(l,k+mNB[blk1],N_in_pair)] * mY[mWhichB[blk2][k]];
 					}
 				}
 
 				for (l = 0; l < mNB[blk2]; l++) {   // with block 2
-					A[selem] += mX[mWhichB[blk2][l] + icol] * Sigma[symi(l+mNB[blk1],k+mNB[blk1])] * mX[mWhichB[blk2][k] + jcol];
+					A[selem] += mX[mWhichB[blk2][l] + icol] * Sigma[usymi(l+mNB[blk1],k+mNB[blk1],N_in_pair)] * mX[mWhichB[blk2][k] + jcol];
 					if (i == j) {
-						b[i] += mX[mWhichB[blk2][l] + icol] * Sigma[symi(l+mNB[blk1],k+mNB[blk1])] * mY[mWhichB[blk2][k]];
+						b[i] += mX[mWhichB[blk2][l] + icol] * Sigma[usymi(l+mNB[blk1],k+mNB[blk1],N_in_pair)] * mY[mWhichB[blk2][k]];
 					}
 				}
 			}
 
 		}
 	}
-*/
 
 	return(true);
 }
@@ -1224,19 +1222,12 @@ bool BlockComp::updateTheta() {
 				// get partial derivatives
 				mCov->partials(mTheta_P, &diag, i, mTheta, mThetaT, mN, mWithinD[0]);
 
-				// fill in lower triangle
-				for (j = 0; j < mN; j++) {
-					for (k = j+1; k < mN; k++) {
-						mTheta_P[lsymi(j,k,mN)] = mTheta_P[usymi(j,k,mN)];
-					}
-				}
-
 				// compute inv(Sigma) x P
 				if (diag) {
 					// take advantage of P being diagonal
 
 					// initialize W[i]
-					memset(mTheta_W[i], 0, sizeof(double)*mN*mN);
+					memset(mTheta_W[i], 0, mN*mN*sizeof(double));
 
 					for (j = 0; j < mN; j++) {
 						for (k = 0; k < mN; k++) {
@@ -1244,6 +1235,13 @@ bool BlockComp::updateTheta() {
 						}
 					}
 				} else {
+					// fill in lower triangle
+					for (j = 0; j < mN; j++) {
+						for (k = j+1; k < mN; k++) {
+							mTheta_P[lsymi(j,k,mN)] = mTheta_P[usymi(j,k,mN)];
+						}
+					}
+
 					dgemm_(&cN, &cN, &mN, &mN, &mN, &p1, mSigma[0], &mN, mTheta_P, &mN, &z, mTheta_W[i], &mN);
 				}
 
@@ -1359,25 +1357,6 @@ bool BlockComp::updateTheta() {
 				// get partial derivatives
 				mCov->partials(mTheta_P, &diag, i, mTheta, mThetaT, mN, mWithinD[0]);
 
-				// fill in lower triangle
-				for (j = 0; j < mN; j++) {
-					for (k = j+1; k < mN; k++) {
-						mTheta_P[lsymi(j,k,mN)] = mTheta_P[usymi(j,k,mN)];
-					}
-				}
-
-				// transfer P to device
-				if (cudaMemcpy(devP, mTheta_P, mN*mN*sizeof(double), cudaMemcpyHostToDevice) != cudaSuccess) {
-					MSG("updateTheta(): unable to copy P to device: %s\n", cudaGetErrorString(cudaGetLastError()));
-					return(false);
-				}
-
-				// initialize W[i]
-				if (cudaMemset(devW, 0, mN*mN*sizeof(double)) != cudaSuccess) {
-					MSG("updateTheta(): unable to initialize W on device\n");
-					return(false);
-				}
-
 				// compute inv(Sigma) x P
 				if (diag) {
 					// take advantage of P being diagonal
@@ -1387,6 +1366,26 @@ bool BlockComp::updateTheta() {
 						}
 					}
 				} else {
+					// fill in lower triangle
+					for (j = 0; j < mN; j++) {
+						for (k = j+1; k < mN; k++) {
+							mTheta_P[lsymi(j,k,mN)] = mTheta_P[usymi(j,k,mN)];
+						}
+					}
+
+					// transfer P to device
+					if (cudaMemcpy(devP, mTheta_P, mN*mN*sizeof(double), cudaMemcpyHostToDevice) != cudaSuccess) {
+						MSG("updateTheta(): unable to copy P to device: %s\n", cudaGetErrorString(cudaGetLastError()));
+						return(false);
+					}
+
+					// initialize W[i]
+					if (cudaMemset(devW, 0, mN*mN*sizeof(double)) != cudaSuccess) {
+						MSG("updateTheta(): unable to initialize W on device\n");
+						return(false);
+					}
+
+					// perform the multiply
 					status = cublasDgemm(mCublasHandle, CUBLAS_OP_N, CUBLAS_OP_N, mN, mN, mN,
 		                           &p1, mDevSigma, mN, devP, mN, &p1, devW, mN);
 		      if (status != CUBLAS_STATUS_SUCCESS) {
@@ -1499,7 +1498,7 @@ bool BlockComp::updateThetaPair(int pair, double *Sigma, double **W, double *H, 
 
 	if (!mConsMem) {
 		// fill in covariance matrix between these two blocks
-		mCov->compute(Sigma, mTheta, mNB[blk1], mWithinD[blk1], mNB[blk2], mWithinD[blk2], mBetweenD[pair], true);
+		mCov->compute(Sigma, mTheta, mNB[blk1], mWithinD[blk1], mNB[blk2], mWithinD[blk2], mBetweenD[pair]);
 	} else {
 		// we're conserving memory
 
@@ -1513,6 +1512,13 @@ bool BlockComp::updateThetaPair(int pair, double *Sigma, double **W, double *H, 
 	if (chol2inv(N_in_pair, Sigma)) {
 		MSG("updateThetaPair(): Unable to invert Sigma\n");
 		return(false);
+	}
+
+	// fill in lower triangle
+	for (i = 0; i < N_in_pair; i++) {
+		for (j = 0; j < N_in_pair; j++) {
+			Sigma[lsymi(i,j,N_in_pair)] = Sigma[usymi(i,j,N_in_pair)];
+		}
 	}
 
 	// initialize residuals and q
@@ -1542,12 +1548,13 @@ bool BlockComp::updateThetaPair(int pair, double *Sigma, double **W, double *H, 
 		resids[i+mNB[blk1]] = mY[c] - resids[i+mNB[blk1]];
 	}
 
+	char   cN = 'N';
+	double p1 = 1.0;
+	double z = 0;
+	int    i1 = 1;
+
 	// compute q = inv(Sigma) x resids
-	for (i = 0; i < N_in_pair; i++) {
-		for (j = 0; j < N_in_pair; j++) {
-			q[i] += Sigma[symi(i,j)] * resids[j];
-		}
-	}
+	dgemv_(&cN, &N_in_pair, &N_in_pair, &p1, Sigma, &N_in_pair, resids, &i1, &z, q, &i1);
 
 	// fill in W and u
 	for (i = 0; i < mNtheta; i++) {
@@ -1559,25 +1566,27 @@ bool BlockComp::updateThetaPair(int pair, double *Sigma, double **W, double *H, 
 		// get partial derivatives
 		mCov->partials(P, &diag, i, mTheta, mThetaT, mNB[blk1], mWithinD[blk1], mNB[blk2], mWithinD[blk2], mBetweenD[pair]);
 
-		// initialize W[i]
-		for (j = 0; j < pow(N_in_pair, 2); j++) { W[i][j] = 0; }
-
 		// compute inv(Sigma) x P
 		if (diag) {
 			// take advantage of P being diagonal
+
+			// initialize W[i]
+			memset(W[i], 0, N_in_pair*N_in_pair*sizeof(double));
+
 			for (j = 0; j < N_in_pair; j++) {
 				for (k = 0; k < N_in_pair; k++) {
-					W[i][j + k*N_in_pair] = Sigma[symi(j,k)] * P[symi(k,k)];
+					W[i][j + k*N_in_pair] = Sigma[usymi(j,k,N_in_pair)] * P[usymi(k,k,N_in_pair)];
 				}
 			}
 		} else {
+			// fill in lower triangle
 			for (j = 0; j < N_in_pair; j++) {
-				for (k = 0; k < N_in_pair; k++) {
-					for (l = 0; l < N_in_pair; l++) {
-						W[i][j + k*N_in_pair] += Sigma[symi(j,l)] * P[symi(l,k)];
-					}
+				for (k = j+1; k < N_in_pair; k++) {
+					P[lsymi(j,k,N_in_pair)] = P[usymi(j,k,N_in_pair)];
 				}
 			}
+
+			dgemm_(&cN, &cN, &N_in_pair, &N_in_pair, &N_in_pair, &p1, Sigma, &N_in_pair, P, &N_in_pair, &z, W[i], &N_in_pair);
 		}
 
 		// fill in u
@@ -1586,9 +1595,9 @@ bool BlockComp::updateThetaPair(int pair, double *Sigma, double **W, double *H, 
 		}
 
 		for (j = 0; j < N_in_pair; j++) {
-			u[i] += 0.5*P[symi(j,j)] * q[j] * q[j];
+			u[i] += 0.5*P[usymi(j,j,N_in_pair)] * q[j] * q[j];
 			for (k = j+1; k < N_in_pair; k++) {
-				u[i] += P[symi(j,k)] * q[j] * q[k];
+				u[i] += P[usymi(j,k,N_in_pair)] * q[j] * q[k];
 			}
 		}
 
@@ -1603,7 +1612,7 @@ bool BlockComp::updateThetaPair(int pair, double *Sigma, double **W, double *H, 
 		for (j = i; j < mNtheta; j++) {
 			if (mFixed[j]) { continue; }
 
-			c = symi(iH,jH);
+			c = usymi(iH,jH,mNtheta-mNfixed);
 
 			// add in diagonal elements of W[i] x W[j]
 			for (k = 0; k < N_in_pair; k++) {
@@ -1717,13 +1726,13 @@ int main(void) {
 	}
 
 	clock_t t1;
-
 	MSG("GPU\n");
 	t1 = clock();
 	test_bc(1, true);
 	MSG("--> Done (%.2fsec)\n", (double)(clock() - t1)/CLOCKS_PER_SEC);
-
 	MSG("=========================================================================\n");
+/*
+*/
 	MSG("CPU\n");
 	t1 = clock();
 	test_bc(1, false);
