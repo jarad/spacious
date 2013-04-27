@@ -68,7 +68,17 @@
 
 \pagestyle{empty}
 \begin{center}
-{\Large {\bf  {\tt Spacious}: An {\tt R} package for large geostatistical datasets}}\\
+%{\Large {\bf  {\tt Spacious}: An {\tt R} package for analysis of \\ large geostatistical spatial datasets}} \\
+{\Large
+	{\bf
+		{\tt spacious} \\
+		\vspace{3pt}
+		An {\tt R} package for analysis of \\
+		\vspace{4pt}
+		large geostatistical spatial datasets
+	}
+}
+
 \vspace{24pt}
 \textbf{Ryan J. Parker}\footnote{North Carolina State University},
 \textbf{Jo Eidsvik}\footnote{Norwegian University of Science and Technology},
@@ -80,9 +90,43 @@
 \today
 \end{center}
 
-{\tt Spacious} in an {\tt R} package to estimate spatial covariance parameters using large geostatistical datasets, and to use these estimates for spatial prediction.
-{\tt Spacious} uses the block composite likelihood approach of \cite{Eidsvik:2013}, which we briefly review in Section \ref{s:review}.
-We then show how to implement this approach for parameter estimation in Section \ref{s:estimate} and spatial prediction in Section \ref{s:predict}.
+{\tt Spacious} in an {\tt R} package to estimate spatial covariance parameters using large geostatistical spatial datasets, and to use these estimates for spatial prediction.
+To achieve efficient computation, {\tt spacious} uses the parallelizable block composite likelihood approach of \cite{Eidsvik:2013}, which we briefly review in Section~\ref{s:review}.
+In addition to the efficient maximum composite likelihood estimation, {\tt spacious} also provides GPU acceleration for maximum likelihood estimation of the full spatial likelihood.
+This GPU acceleration, however, is limited by the amount of memory available on the GPU.
+
+In this manual we begin in Section~\ref{s:install} showing how to install {\tt spacious} using the default or parallel computing options with {\tt pthreads} or {\tt CUDA}.
+After a review of the block composite likelihood in Section~\ref{s:review}, we then show how to implement this approach for parameter estimation in Section~\ref{s:estimate} and spatial prediction in Section~\ref{s:predict}.
+We end with Section~\ref{s:parallel} showing how {\tt spacious} uses parallel computing to estimate models for moderate and large size data sets.
+
+\section{Installing the {\tt spacious} package}\label{s:install}
+
+The {\tt spacious} package can be downloaded from CRAN and installed using the command:
+
+\begin{verbatim}
+> install.packages("spacious")
+\end{verbatim}
+
+\subsection{Enabling support for {\tt pthreads}}
+
+The block composite likelihood in Section~\ref{s:review} operates on independent pairs of blocks, and thus computations for each pair of blocks can be run in parallel.
+Running these computations in parallel is supported with {\tt pthreads}.
+To enable {\tt pthreads} support, run the command:
+
+\begin{verbatim}
+> install.packages("spacious", type="source", configure.args="--with-pthreads")
+\end{verbatim}
+The {\tt pthreads} library is not natively supported by Windows and has not been tested for use with {\tt spacious}.
+
+\subsection{Enabling support for {\tt CUDA}}
+
+Currently, {\tt spacious} accelerates matrix operations for maximum likelihood estimation of full models using {\tt CUDA} and {\tt CUBLAS}.
+To enable {\tt CUDA} support, run the command:
+
+\begin{verbatim}
+> install.packages("spacious", type="source", configure.args="--with-cuda")
+\end{verbatim}
+Support for {\tt CUDA} is currently limited to release 5.0.
 
 \section{Review of the block composite likelihood approach}\label{s:review}
 
@@ -101,15 +145,9 @@ The block composite likelihood is simply the product of joint likelihoods for pa
 $$ \prod_{j\sim k}
     |\bSigma_{jk}(\btheta)|^{-1/2}\exp\left[-\frac{1}{2}(\bY_{jk}-\bX_{jk}\bbeta)^T\bSigma_{jk}(\btheta)^{-1}(\bY_{jk}-\bX_{jk}\bbeta)\right],$$
 where $\bY_{jk} = (\bY_j^T, \bY_k^T)^T$, $\bX_{jk}$ and $\bSigma_{jk}(\btheta)$ are the corresponding design and covariance matrices, and $j\sim k$ indicates that regions $\calB_j$ and $\calB_k$ are adjacent.
-Assuming that the number of observations in each block is fixed and the number of pairs of adjacent blocks increases linearly as the sample size increases, then evaluating the likelihood is of order $\mathcal{O}(n)$, which is a dramatic improvement over the $\mathcal{O}(n^3)$ evaluation of the full likelihood.
+Assuming that the number of observations in each block is fixed and the number of pairs of adjacent blocks increases linearly as the sample size increases, then the computational complexity for evaluating the likelihood is $\mathcal{O}(n)$, a dramatic improvement over the $\mathcal{O}(n^3)$ evaluation of the full likelihood.
 
 \section{Parameter estimation}\label{s:estimate}
-The {\tt spacious} package can be downloaded from CRAN and installed using the command
-
-\begin{verbatim}
-> install.packages("spacious")
-> library(spacious)
-\end{verbatim}
 
 We illustrate {\tt spacious} using the temperature anomaly data included in the {\tt spacious} package.
 These data are described in detail by \cite{klein-2002a} and can be downloaded from {\tt http://www.ecad.eu}.
@@ -117,6 +155,7 @@ The object {\tt anom.2011} contains $n=1,375$ observations observed at locations
 Shown in Figure~\ref{f:data}, the code below plots the response, {\tt anom}, which is 2011 annual mean temperature anomaly (computed with respect to the 1961-1990 average) at the $n\times 2$ matrix of spatial coordinates, {\tt S}.
 
 \begin{verbatim}
+> library(spacious)
 > data(anom.2011)
 > S <- cbind(anom.2011$lon, anom.2011$lat)
 >
@@ -127,8 +166,7 @@ Shown in Figure~\ref{f:data}, the code below plots the response, {\tt anom}, whi
       geom_point(aes(lon, lat, color=anom), shape=15, size=1.5, data=anom.2011) +
       scale_colour_gradient(low = "green", high="red")
 \end{verbatim}
-
-The dataset also includes regularly-spaced prediction locations and elevations, {\tt anom.pred.grid}.
+The dataset also includes regularly-spaced prediction locations and elevations in the {\tt anom.pred.grid} object.
 
 \begin{figure}
 	\caption{Temperature data in Celcius.}\label{f:data}
@@ -144,6 +182,7 @@ The main call is
 spacious(formula, data, S,
          cov = "exp", cov.inits, fixed = list(smoothness = 0.5),
          blocks = list(type = "cluster", nblocks = round(n/50)),
+         nthreads=1, gpu=FALSE,
          B, neighbors)
 \end{verbatim}
 
@@ -171,7 +210,7 @@ Figure \ref{f:converge} gives the convergence plot that results from {\tt plot(f
 This plots the value of each spatial covariance parameter at each iteration of the optimization routine.
 When the model fit converges, these trace plots will plateau for all covariance parameters.
 Model convergence can be assessed with the variable {\tt fit\$convergence}.
-When {\tt fit\$convergence} is {\tt FALSE}, this plot can help identify which parameter(s) are not converging properly.
+When {\tt fit\$convergence} is {\tt FALSE}, this plot may help identify which parameter(s) are not converging.
 
 \begin{figure}
 	\caption{Convergence plot for the temperature data.}\label{f:converge}
@@ -325,6 +364,8 @@ For example, the 95\% prediction intervals for the first five prediction locatio
 4 1.610 0.6000 0.4342 2.786
 5 1.614 0.6077 0.4234 2.805
 \end{verbatim}
+
+\section{Estimation with parallel computing for large data sets}\label{s:parallel}
 
 \section*{Acknowledgments}
 
