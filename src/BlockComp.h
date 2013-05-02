@@ -36,6 +36,8 @@ public:
 	bool setData(int n, double *y, double *S, int nblocks, int *B, int p, double *X, int npairs, int *neighbors);
 	void setInits(double *theta);
 	void setFixed(bool *fixed, double *values);
+	void computeWithinDistance(int n, double *S, double *D);
+	void computeBetweenDistance(int n1, double *S1, int n2, double *S2, double *D);
 
 	// fit model with Fisher scoring
 	bool fit(bool verbose);
@@ -46,6 +48,9 @@ public:
 	// methods to compute quantities of interest (requires fit)
 	void computeStdErrs();
 	void computeCLIC();
+	void computeFitted(double *fitted);
+	void computeResiduals(double *resids, const double *fitted);
+	bool predict(int n_0, double *y_0, double *newS, double *newX, bool do_sd, double *sd);
 
 	// extract items of interest
 	void getBeta(double *beta);

@@ -429,22 +429,38 @@ bool BlockComp::setData(int n, double *y, double *S, int nblocks, int *B, int p,
 			mWithinD    = (double **)malloc(sizeof(double *));
 			mWithinD[0] = (double *)malloc(sizeof(double)*symi(0, mN));
 
-			for (i = 0; i < mN; i++) {
-				for (j = i; j < mN; j++) {
-					if (i == j) {
-						mWithinD[0][ symi(j,j) ] = 0;
-					} else {
-						mWithinD[0][ symi(i,j) ] = sqrt( pow(mS[i]-mS[j], 2) + pow(mS[i+mN] - mS[j+mN], 2) );
-					}
-				}
-			}
-
+			computeWithinDistance(mN, mS, mWithinD[0]);
 		}
 
 	}  // end memory conservation check
 
 	return(true);
 }
+
+void BlockComp::computeWithinDistance(int n, double *S, double *D) {
+	int i,j;
+
+	for (i = 0; i < n; i++) {
+		for (j = i; j < n; j++) {
+			if (i == j) {
+				D[ symi(j,j) ] = 0;
+			} else {
+				D[ symi(i,j) ] = sqrt( pow(S[i]-S[j], 2) + pow(S[i+n] - S[j+n], 2) );
+			}
+		}
+	}
+}
+
+void BlockComp::computeBetweenDistance(int n1, double *S1, int n2, double *S2, double *D) {
+	int i,j;
+
+	for (i = 0; i < n1; i++) {
+		for (j = 0; j < n2; j++) {
+			D[i + j*n1] = sqrt( pow(S1[i]-S2[j], 2) + pow(S1[i+n1]-S2[j+n2], 2) );
+		}
+	}
+}
+
 
 void BlockComp::setInits(double *theta) {
 	free(mThetaInits);
@@ -780,7 +796,7 @@ bool BlockComp::updateBeta() {
 		// update beta using full likelihood
 
 		if (!mConsMem) {
-			// fill in covariance matrix between these two blocks
+			// fill in covariance matrix
 			mCov->compute(mSigma[0], mTheta, mN, mWithinD[0]);
 		} else {
 			// we're conserving memory
@@ -1670,6 +1686,145 @@ void *BlockComp::updateThetaThread(void *work) {
 }
 #endif
 
+void BlockComp::computeFitted(double *fitted) {
+	char   cN = 'N';
+	double p1 = 1.0;
+	double z  = 0.0;
+	int    i1 = 1;
+
+	// compute fitted = Xb
+	dgemv_(&cN, &mN, &mNbeta, &p1, mX, &mN, mBeta, &i1, &z, fitted, &i1);
+}
+
+void BlockComp::computeResiduals(double *resids, const double *fitted) {
+	for (int i = 0; i < mN; i++) {
+		resids[i] = mY[i]-fitted[i];
+	}
+}
+
+bool BlockComp::predict(int n_0, double *y_0, double *newS, double *newX, bool do_sd, double *sd) {
+	if (!mHasFit) {
+		MSG("predict() requires a fitted model.\n");
+		return(false);
+	}
+
+	int i,j;
+
+// move these to member variables
+MSG("Move fitted/residuals to member variables.\n");
+	double fitted[mN];
+	double resids[mN];
+	computeFitted(fitted);
+	computeResiduals(resids, fitted);
+
+	if (mLikForm == Block) {
+		// predict with block composite likelihood
+MSG("Block...\n");
+	} else if (mLikForm == Full) {
+		// predict using full likelihood
+MSG("Full...\n");
+
+/*
+    # use all data to perform predictions and perform traditional kriging
+    n <- nrow(S)
+
+    # compute covariance matrix
+    Sigma <- compute_cov(object$cov, theta, D)
+
+    # get the predictions
+    y_0[1:nNew] <- X %*% object$beta + Sigma[nFit+1:nNew,1:nFit] %*%
+      chol2inv(chol(Sigma[1:nFit,1:nFit])) %*% object$resids
+
+    if (interval == "prediction") {
+      invSigma <- chol2inv(chol(Sigma))
+      sd.pred <- sqrt(diag( chol2inv(chol( invSigma[nFit+1:nNew,nFit+1:nNew] )) ))
+    }
+*/
+
+		// make room for fitted + predicted locations
+		int combN = mN+n_0;
+		double *combSigma = (double *)malloc(combN*combN*sizeof(double));
+		double *combBetweenD = (double *)malloc(mN*n_0*sizeof(double));
+		double *newD = (double *)malloc(symi(0,n_0)*sizeof(double));
+
+		// fill in distance
+		computeWithinDistance(n_0, newS, newD);
+		computeBetweenDistance(mN, mS, n_0, newS, combBetweenD);
+
+		// fill in covariance matrix
+		mCov->compute(combSigma, mTheta, mN, mWithinD[0], n_0, newD, combBetweenD);
+
+		// invert fitted Sigma
+		for (i = 0; i < mN; i++) {
+			for (j = i; j < mN; j++) {
+				mSigma[0][usymi(i,j,mN)] = combSigma[usymi(i,j,combN)];
+			}
+		}
+
+		if (chol2inv(mN, mSigma[0])) {
+			MSG("Unable to invert fitted Sigma\n");
+			free(combSigma); free(combBetweenD); free(newD);
+			return(false);
+		}
+
+		char   cN = 'N';
+		double p1 = 1.0;
+		double z  = 0.0;
+		int    i1 = 1;
+		double corrvec[mN];
+
+		// compute new y = Xb
+		dgemv_(&cN, &n_0, &mNbeta, &p1, newX, &n_0, mBeta, &i1, &z, y_0, &i1);
+
+		// compute inv(Sigma) x resids
+		dgemv_(&cN, &mN, &mN, &p1, mSigma[0], &mN, resids, &i1, &z, corrvec, &i1);
+
+		// compute y_0 = Xb + Sigma[new,fit] inv(Sigma[fit,fit]) resids
+		double covBetween[n_0*mN];
+		for (j = 0; j < mN; j++) {
+			for (i = 0; i < n_0; i++) {
+				covBetween[i + j*n_0] = combSigma[usymi(i+mN,j,combN)];
+			}
+		}
+		dgemv_(&cN, &n_0, &mN, &p1, covBetween, &n_0, corrvec, &i1, &p1, y_0, &i1);
+
+		if (do_sd && sd != NULL) {
+			// fill sd with prediction variances
+
+			// invert combined Sigma
+			if (chol2inv(combN, combSigma)) {
+				MSG("Unable to invert combined Sigma\n");
+				free(combSigma); free(combBetweenD); free(newD);
+				return(false);
+			}
+
+			// invert the new data block of inv(combSigma)
+			for (i = 0; i < n_0; i++) {
+				for (j = i; j < n_0; j++) {
+					mSigma[0][usymi(i,j,n_0)] = combSigma[usymi(mN+i,mN+j,combN)];
+				}
+			}
+
+			if (chol2inv(n_0, mSigma[0])) {
+				MSG("Unable to invert new data block of inv(combSigma)\n");
+				free(combSigma); free(combBetweenD); free(newD);
+				return(false);
+			}
+
+			// fill in std devs
+			for (i = 0; i < n_0; i++) {
+				sd[i] = sqrt(mSigma[0][usymi(i,i,n_0)]);
+			}
+		}
+
+		free(combSigma);
+		free(combBetweenD);
+		free(newD);
+	}
+
+	return(true);
+}
+
 void BlockComp::getBeta(double *beta) {
 	for (int i = 0; i < mNbeta; i++) {
 		beta[i] = mBeta[i];
@@ -1691,8 +1846,8 @@ void BlockComp::getTheta(double *theta) {
 void test_bc(int nthreads, bool gpu) {
 	BlockComp blk(nthreads, gpu);
 
-	blk.setLikForm(BlockComp::Block);
-	//blk.setLikForm(BlockComp::Full);
+	//blk.setLikForm(BlockComp::Block);
+	blk.setLikForm(BlockComp::Full);
 	blk.setCovType(BlockComp::Exp);
 
 	if (!blk.setData(test_n, test_y, test_S, test_nblocks, test_B, test_p, test_X, test_npairs, test_neighbors)) {
@@ -1712,6 +1867,22 @@ void test_bc(int nthreads, bool gpu) {
 	if (!blk.fit(true)) {
 		MSG("Error with fit.\n");
 	}
+
+	//double newS[] = { 0.75, 0.80 };
+/*
+	double newS[] = { 0.6, 0.85 };
+	double newX[] = { 1.0, 0.0 };
+	double newY[] = { 0.0 };
+	double newSD[] = { 0.0 };
+	blk.predict(1, newY, newS, newX, true, newSD);
+MSG("predicted y_0: %.2f (%.3f)\n", newY[0], newSD[0]);
+*/
+	double newS[] = { 0.75, 0.6, 0.80, 0.85 };
+	double newX[] = { 1.0, 1.0, 0.0, 0.0 };
+	double newY[] = { 0.0, 0.0 };
+	double newSD[] = { 0.0, 0.0 };
+	blk.predict(2, newY, newS, newX, true, newSD);
+MSG("predicted y_0: %.2f (%.3f); %.2f (%.3f)\n", newY[0], newSD[0], newY[1], newSD[1]);
 }
 
 int main(void) {
@@ -1726,12 +1897,12 @@ int main(void) {
 	}
 
 	clock_t t1;
+/*
 	MSG("GPU\n");
 	t1 = clock();
 	test_bc(4, false);
 	MSG("--> Done (%.2fsec)\n", (double)(clock() - t1)/CLOCKS_PER_SEC);
 	MSG("=========================================================================\n");
-/*
 */
 	MSG("CPU\n");
 	t1 = clock();
