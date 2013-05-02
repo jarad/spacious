@@ -1,3 +1,33 @@
+1.0 release
+============
+- Finish C++ interface/parallelization:
+	o Implement predict() (accelerate where appropriate)
+	o Compute standard errors (accelerate where appropriate)
+	o Add Matern covariance
+- Update docs:
+	o Cover parallization options
+	o Ensure all inputs are covered
+- Complete manual
+	o Add example for a large data set
+	o Add example for moderate data set showing GPU acceleration of full model
+- Create configure script
+	o Add --with-pthreads option
+	o Add --with-cuda option
+- Create unit tests
+	o Test if threading gives same results as no threading
+	o Test if GPU acceleration gives same results as no GPU
+- Run sim studies
+	o Sanity check to make sure estimates and coverages are as expected
+
+Later?
+========
+- Allow for GPU acceleration in block composite likelihood
+	o Accelerate operations for large size blocks
+	o Concurrently operate on many blocks at the same time
+
+
+Random notes
+=============
 - Error check inputs to predict()
 - Explore ways to improve speed of predict():
 	o In for (b in uB):
@@ -15,7 +45,7 @@
 - In summary():
 	o Figure out how to make nice tables of results
 - Add source/reference for mean_max_temps data set
-- Add prediction variances as an output for predict()
+- Use graph to predict with a set level of neighbors
 
 CUDA:
-- Allocate space on device one in fit() (such as mX, mY, mSigma, etc.)
+- Allocate space on device once in fit() (such as mX, mY, mSigma, etc.)
