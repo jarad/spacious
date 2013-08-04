@@ -11,9 +11,9 @@ covar <- S[,1]
 y <- read.table("test/jo/synt_data.txt")$V1
 
 #fit.FL <- spacious(y~covar, S=S, blocks=list(type="regular", nblocks=1^2))
-#fit.CL <- spacious(y~covar, S=S, blocks=list(type="regular", nblocks=5^2))
-print(summary(fit.FL))
-#print(summary(fit.CL))
+fit.CL <- spacious(y~covar, S=S, blocks=list(type="regular", nblocks=5^2), verbose=TRUE)
+cat("Full:\n"); print(summary(fit.FL))
+cat("Comp:\n"); print(summary(fit.CL))
 
 # predict at new sites
 newS <- rbind(
@@ -23,7 +23,7 @@ newS <- rbind(
 	c(0.30,0.70)
 )
 
-preds.FL <- predict(fit.FL, newS=newS, newdata=data.frame(covar=newS[,1]), interval="prediction", opts=list(type="all"))
-preds.CL <- predict(fit.CL, newS=newS, newdata=data.frame(covar=newS[,1]), interval="prediction")
-print(preds.FL)
-print(preds.CL)
+#preds.FL <- predict(fit.FL, newS=newS, newdata=data.frame(covar=newS[,1]), interval="prediction", opts=list(type="all"))
+#preds.CL <- predict(fit.CL, newS=newS, newdata=data.frame(covar=newS[,1]), interval="prediction")
+#print(preds.FL)
+#print(preds.CL)

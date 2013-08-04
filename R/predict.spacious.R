@@ -1,10 +1,17 @@
 # predict values at new sites using fit from spacious block composite model
 "predict.spacious" <- function(object, newdata, newS, newB, D,
 	opts = list(type="block"),
-	interval = "none", level = 0.95, ...) {
+	interval = "none", level = 0.95,
+	nthreads = 1, gpu=FALSE,
+	engine, # use the C or R implementation?
+	...) {
 
 	if (missing(newS)) {
 		stop("Must specify locations newS to make predictions at.")
+	}
+
+	if (!object$convergence) {
+		warning("Predictions being made with fit that did not converge!")
 	}
 
 	nFit <- nrow(object$S)
@@ -37,6 +44,16 @@
 
 	# locations for all points
 	S <- rbind(object$S, newS)
+
+	if (missing(engine)) {
+		engine <- object$engine
+	}
+
+	if (engine == "C") {
+	} else if (engine == "R") {
+	} else {
+		error(paste0("Unknown engine: ",engine,"\n"))
+	}
 
 	if (missing(D)) {
 		# compute distance matrix

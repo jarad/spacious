@@ -18,7 +18,8 @@ data(mean_max_temps)
 #print(summary(fit.clus))
 
 # fit model
-#fit.clus <- spacious(temp~elev, data=mean_max_temps, S=cbind(mean_max_temps$lat,mean_max_temps$long), blocks=list(type="cluster", nblocks=250), verbose=TRUE)
+fit.clus <- spacious(temp~elev, data=mean_max_temps, S=cbind(mean_max_temps$lat,mean_max_temps$long), blocks=list(type="cluster", nblocks=250), verbose=TRUE)
+print(summary(fit.clus))
 
 if (FALSE) {
 # plot data
@@ -41,7 +42,7 @@ graphics.off()
 
 }
 
-if (TRUE) {
+if (FALSE) {
 # make predictions
 
 #newS <- as.matrix(expand.grid(seq(-10,0,length=25), seq(35,43,length=25)))
@@ -67,7 +68,7 @@ sapply(1:nrow(newS), function(i) {
 
 }
 
-if (TRUE) { 
+if (FALSE) { 
 # plot data + predictions
 pdf("pdf/mmt_pred.pdf")
 	quilt.plot(c(mean_max_temps$lat,newS[,1]), c(mean_max_temps$lon,newS[,2]), c(mean_max_temps$temp,preds),

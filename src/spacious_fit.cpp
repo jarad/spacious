@@ -7,13 +7,26 @@
 extern "C" {
 
 // spacious_fit function to be called from R
-void spacious_fit(double *y, double *X, double *S, int *B, int *neighbors,
-                  int *n, int *p, int *nblocks, int *npairs,
-                  char **lik_form, char **cov,
-                  double *theta, bool *theta_fixed, double *beta,
-                  bool *verbose, double *tol, int *max_iter,
-                  int *nthreads, bool *gpu,
-                  bool *convergence, int *nIter
+void spacious_fit(
+	// input data
+	double *y, double *X, double *S, int *B, int *neighbors,
+	int *n, int *p, int *nblocks, int *npairs,
+	// type of model to fit
+	char **lik_form, char **cov,
+	// parameter estimates and convergence info
+	double *theta, bool *theta_fixed, double *beta,
+	bool *convergence, int *nIter,
+	// standard errors
+	double *se_beta, double *se_theta,
+	double *vcov_beta, double *vcov_theta,
+	// fitted values and residuals
+	double *fitted, double *resids,
+	// values of theta and log likelihood at each iteration
+	double *iters_theta, double *iters_ll,
+	// fitting control parameters
+	bool *verbose, double *tol, int *max_iter, bool *compute_se,
+	// parallelization options
+	int *nthreads, bool *gpu
 ) {
 
 	BlockComp *blk;
@@ -70,6 +83,10 @@ void spacious_fit(double *y, double *X, double *S, int *B, int *neighbors,
 	// get convergence info
 	convergence[0] = blk->getConverged();
 	nIter[0]       = blk->getIters();
+
+	// get fitted and residuals
+	blk->getFitted(fitted);
+	blk->getResiduals(resids);
 
 	delete blk;
 

@@ -3,13 +3,11 @@
 - Finish C++ interface/parallelization:
 	o Implement predict() (accelerate where appropriate)
 	o Compute standard errors (accelerate where appropriate)
+	o Compute CLIC (accelerate where appropriate)
+	o Compute log likelihood for diagnostics
+	o Use log likelihood differences to identify convergence (see glm)
+	o Save parameters for all iterations
 	o Add Matern covariance
-- Update docs:
-	o Cover parallization options
-	o Ensure all inputs are covered
-- Complete manual
-	o Add example for a large data set
-	o Add example for moderate data set showing GPU acceleration of full model
 - Create configure script
 	o Add --with-pthreads option
 	o Add --with-cuda option
@@ -18,13 +16,18 @@
 	o Test if GPU acceleration gives same results as no GPU
 - Run sim studies
 	o Sanity check to make sure estimates and coverages are as expected
+- Update docs:
+	o Cover parallization options
+	o Ensure all inputs are covered
+- Complete manual
+	o Add example for a large data set
+	o Add example for moderate data set showing GPU acceleration of full model
 
 Later?
 ========
 - Allow for GPU acceleration in block composite likelihood
 	o Accelerate operations for large size blocks
 	o Concurrently operate on many blocks at the same time
-
 
 Random notes
 =============
@@ -36,7 +39,6 @@ Random notes
 - Explore ways to improve speed of spacious.fit():
 	o In update_theta():
 		- Figure out if it is possible to compute/invert cov matrices once since it's done in update_beta() as well.
-	o See if there are ways to improve the way we identify convergence of fit.
 	o Look for ways to speed up standard error computations
 - In spacious():
 	o Error check inputs

@@ -107,6 +107,9 @@ void BlockComp::initPointers() {
 	mTheta      = NULL;
 	mThetaT     = NULL;
 
+	mFitted     = NULL;
+	mResids     = NULL;
+
 	mSigma      = NULL;
 	mBeta_A     = NULL;
 	mBeta_b     = NULL;
@@ -170,6 +173,9 @@ void BlockComp::cleanup() {
 	free(mBeta);
 	free(mTheta);
 	free(mThetaT);
+
+	free(mFitted);
+	free(mResids);
 
 	if (mSigma != NULL) {
 		for (i = 0; i < mNthreads; i++) {
@@ -437,7 +443,7 @@ bool BlockComp::setData(int n, double *y, double *S, int nblocks, int *B, int p,
 	return(true);
 }
 
-void BlockComp::computeWithinDistance(int n, double *S, double *D) {
+void BlockComp::computeWithinDistance(int n, const double *S, double *D) {
 	int i,j;
 
 	for (i = 0; i < n; i++) {
@@ -451,7 +457,7 @@ void BlockComp::computeWithinDistance(int n, double *S, double *D) {
 	}
 }
 
-void BlockComp::computeBetweenDistance(int n1, double *S1, int n2, double *S2, double *D) {
+void BlockComp::computeBetweenDistance(int n1, const double *S1, int n2, const double *S2, double *D) {
 	int i,j;
 
 	for (i = 0; i < n1; i++) {
@@ -641,6 +647,10 @@ bool BlockComp::fit(bool verbose) {
 	double *prevBeta   = (double *)malloc(sizeof(double)*mNbeta);
 	double *prevThetaT = (double *)malloc(sizeof(double)*mNtheta);
 
+#ifdef DEBUG
+		MSG("TODO: use log lik to detect for convergence!\n");
+#endif
+
 	for (mIters = 0; mIters < mMaxIter; mIters++) {
 		// store previous values
 		for (i = 0; i < mNbeta; i++)  { prevBeta[i]   = mBeta[i]; }
@@ -698,6 +708,7 @@ bool BlockComp::fit(bool verbose) {
 			}
 
 			mConverged = true;
+			mIters++;
 
 			break;
 		}
@@ -1243,7 +1254,7 @@ bool BlockComp::updateTheta() {
 					// take advantage of P being diagonal
 
 					// initialize W[i]
-					memset(mTheta_W[i], 0, mN*mN*sizeof(double));
+					for (j = 0; j < mN*mN; j++) mTheta_W[i][j] = 0;
 
 					for (j = 0; j < mN; j++) {
 						for (k = 0; k < mN; k++) {
@@ -1587,7 +1598,7 @@ bool BlockComp::updateThetaPair(int pair, double *Sigma, double **W, double *H, 
 			// take advantage of P being diagonal
 
 			// initialize W[i]
-			memset(W[i], 0, N_in_pair*N_in_pair*sizeof(double));
+			for (j = 0; j < N_in_pair*N_in_pair; j++) W[i][j] = 0;
 
 			for (j = 0; j < N_in_pair; j++) {
 				for (k = 0; k < N_in_pair; k++) {
@@ -1686,23 +1697,59 @@ void *BlockComp::updateThetaThread(void *work) {
 }
 #endif
 
-void BlockComp::computeFitted(double *fitted) {
+void BlockComp::computeFitted() {
+	// computed fitted values to model data
+	if (mFitted != NULL) return;
+
+	mFitted = (double *)malloc(sizeof(double)*mN);
+
+	computeFitted(mN, mFitted, mX);
+}
+
+void BlockComp::computeFitted(int n, double *fitted, double *X) {
+	// compute fitted values for covariates in X
 	char   cN = 'N';
 	double p1 = 1.0;
 	double z  = 0.0;
 	int    i1 = 1;
 
 	// compute fitted = Xb
-	dgemv_(&cN, &mN, &mNbeta, &p1, mX, &mN, mBeta, &i1, &z, fitted, &i1);
+	dgemv_(&cN, &n, &mNbeta, &p1, X, &n, mBeta, &i1, &z, fitted, &i1);
 }
 
-void BlockComp::computeResiduals(double *resids, const double *fitted) {
+void BlockComp::computeResiduals() {
+	// compute residuals for model data
+	if (mResids != NULL) return;
+
+	// make sure we have fitted values
+	computeFitted();
+
+	mResids = (double *)malloc(sizeof(double)*mN);
+
 	for (int i = 0; i < mN; i++) {
-		resids[i] = mY[i]-fitted[i];
+		mResids[i] = mY[i]-mFitted[i];
 	}
 }
 
-bool BlockComp::predict(int n_0, double *y_0, double *newS, double *newX, bool do_sd, double *sd) {
+void BlockComp::getFitted(double *fitted) {
+	computeFitted();
+
+	if (mFitted == NULL) return;
+
+	for (int i = 0; i < mN; i++) fitted[i] = mFitted[i];
+}
+
+void BlockComp::getResiduals(double *resids) {
+	computeResiduals();
+
+	if (mResids == NULL) return;
+
+	for (int i = 0; i < mN; i++) resids[i] = mResids[i];
+}
+
+bool BlockComp::predict(int n_0, double *y_0, const double *newS, const int *newB, const double *newX,
+                        bool do_sd, double *sd, bool local, int Nlocal) {
+
 	if (!mHasFit) {
 		MSG("predict() requires a fitted model.\n");
 		return(false);
@@ -1710,36 +1757,90 @@ bool BlockComp::predict(int n_0, double *y_0, double *newS, double *newX, bool d
 
 	int i,j;
 
-// move these to member variables
-MSG("Move fitted/residuals to member variables.\n");
-	double fitted[mN];
-	double resids[mN];
-	computeFitted(fitted);
-	computeResiduals(resids, fitted);
+	// computed fitted and residuals
+	computeFitted();
+	computeResiduals();
 
-	if (mLikForm == Block) {
+	if (local) {
+		// predict with local kriging
+	} else if (mLikForm == Block) {
 		// predict with block composite likelihood
-MSG("Block...\n");
+
+		int ix,jx;
+		int nNewB[mNblocks];
+		int nMaxInB = 0;
+
+		// compute how many prediction sites are in each block
+		for (i = 0; i < mNblocks; i++) nNewB[i] = 0;
+		for (i = 0; i < n_0; i++) nNewB[newB[i]]++;
+
+		// compute largest number of prediction sites in a block
+		for (i = 0; i < mNblocks; i++) if (nNewB[i] > nMaxInB) nMaxInB = nNewB[i];
+
+		// store locations in each block
+		int **newWhichB = (int **)malloc(sizeof(int *)*mNblocks);
+		for (i = 0; i < mNblocks; i++) {
+			if (nNewB[i] == 0) continue;
+			newWhichB[i] = (int *)malloc(sizeof(int)*nNewB[i]);
+		}
+
+		int locs[mNblocks];
+		for (i = 0; i < mNblocks; i++) { locs[i] = 0; }
+		for (i = 0; i < n_0; i++) newWhichB[ newB[i] ][ locs[newB[i]]++ ] = i;
+
+		// variables re-used for prediction in each block
+		double y_block[nMaxInB];
+		double X_block[nMaxInB*mNbeta];
+		double S_block[2*nMaxInB];
+		double sd_block[nMaxInB];
+
+		for (i = 0; i < nMaxInB; i++)        y_block[i] = sd_block[i] = 0;
+		for (i = 0; i < nMaxInB*mNbeta; i++) X_block[i] = 0;
+		for (i = 0; i < 2*nMaxInB; i++)      S_block[i] = 0;
+
+		for (i = 0; i < mNblocks; i++) {
+			if (nNewB[i] <= 0) continue;
+
+#ifdef DEBUG
+			MSG("%d predictions at block %d\n", nNewB[i], i);
+#endif
+
+			// fill in S
+			for (j = 0; j < nNewB[i]; j++) {
+				S_block[j]          = newS[newWhichB[i][j]];
+				S_block[j+nNewB[i]] = newS[newWhichB[i][j]+n_0];
+			}
+
+			// fill in X
+			for (jx = 0; jx < mNbeta; jx++) {
+				for (ix = 0; ix < nNewB[i]; ix++) {
+					X_block[ix + jx*nNewB[i]] = newX[newWhichB[i][ix] + jx*n_0];
+				}
+			}
+
+			if (!blockPredict(i, nNewB[i], y_block, S_block, X_block, do_sd, sd_block)) {
+				MSG("Unable to predict sites in block %d\n", i);
+
+				for (j = 0; j < mNblocks; j++) {
+					if (nNewB[j] == 0) continue;
+					free(newWhichB[j]);
+				}
+				free(newWhichB);
+
+				return(false);
+			}
+
+			// fill in y_0
+			for (ix = 0; ix < nNewB[i]; ix++) y_0[ newWhichB[i][ix] ] = y_block[ix];
+		}
+
+		for (i = 0; i < mNblocks; i++) {
+			if (nNewB[i] == 0) continue;
+			free(newWhichB[i]);
+		}
+		free(newWhichB);
 	} else if (mLikForm == Full) {
 		// predict using full likelihood
-MSG("Full...\n");
-
-/*
-    # use all data to perform predictions and perform traditional kriging
-    n <- nrow(S)
-
-    # compute covariance matrix
-    Sigma <- compute_cov(object$cov, theta, D)
-
-    # get the predictions
-    y_0[1:nNew] <- X %*% object$beta + Sigma[nFit+1:nNew,1:nFit] %*%
-      chol2inv(chol(Sigma[1:nFit,1:nFit])) %*% object$resids
-
-    if (interval == "prediction") {
-      invSigma <- chol2inv(chol(Sigma))
-      sd.pred <- sqrt(diag( chol2inv(chol( invSigma[nFit+1:nNew,nFit+1:nNew] )) ))
-    }
-*/
 
 		// make room for fitted + predicted locations
 		int combN = mN+n_0;
@@ -1777,7 +1878,7 @@ MSG("Full...\n");
 		dgemv_(&cN, &n_0, &mNbeta, &p1, newX, &n_0, mBeta, &i1, &z, y_0, &i1);
 
 		// compute inv(Sigma) x resids
-		dgemv_(&cN, &mN, &mN, &p1, mSigma[0], &mN, resids, &i1, &z, corrvec, &i1);
+		dgemv_(&cN, &mN, &mN, &p1, mSigma[0], &mN, mResids, &i1, &z, corrvec, &i1);
 
 		// compute y_0 = Xb + Sigma[new,fit] inv(Sigma[fit,fit]) resids
 		double covBetween[n_0*mN];
@@ -1825,16 +1926,334 @@ MSG("Full...\n");
 	return(true);
 }
 
-void BlockComp::getBeta(double *beta) {
-	for (int i = 0; i < mNbeta; i++) {
-		beta[i] = mBeta[i];
+// predict at sites in block
+bool BlockComp::blockPredict(int block, int n_0, double *y_0,
+	const double *newS, const double *newX, bool do_sd, double *sd) {
+
+	char   cN = 'N';
+	char   cT = 'T';
+	double p1 = 1.0;
+	int    i1 = 1;
+	double zero = 0.0;
+
+	int i,j;
+	int ip,ip2;
+	int neighbor,neighbor2;
+	int N_in_pair,N_in_pair2;
+	bool trans,trans2;
+
+	int    N_block_new = n_0+mNB[block];
+	double A_0[n_0*n_0];
+	double b_0[n_0];
+	double J_0[n_0*n_0];
+	double B_0[n_0*N_block_new];
+
+	double pairD[symi(0, mMaxPair+n_0)];
+	double pairSigma[(mMaxPair+n_0)*(mMaxPair+n_0)];
+	double pairD2[symi(0, mMaxPair+n_0)];
+	double pairSigma2[(mMaxPair+n_0)*(mMaxPair+n_0)];
+	double neighborSigma[mMaxPair*mMaxPair];
+
+	double predMat[n_0*mMaxPair];
+	double predMat2[n_0*mMaxPair];
+	double pairResids[mMaxPair];
+
+	// initialize
+	for (i = 0; i < n_0*n_0; i++)         A_0[i] = J_0[i] = 0;
+	for (i = 0; i < n_0; i++)             b_0[i] = 0;
+	for (i = 0; i < n_0*N_block_new; i++) B_0[i] = 0;
+
+	for (i = 0; i < symi(0, mMaxPair+n_0); i++)         pairD[i] = pairD2[i] = 0;
+	for (i = 0; i < (mMaxPair+n_0)*(mMaxPair+n_0); i++) pairSigma[i] = pairSigma2[i] = 0;
+	for (i = 0; i < mMaxPair*mMaxPair; i++)             neighborSigma[i] = 0;
+
+	for (i = 0; i < n_0*mMaxPair; i++) predMat[i] = predMat2[i] = 0;
+	for (i = 0; i < mMaxPair; i++)     pairResids[i] = 0;
+
+	// fill in distance matrix for prediction sites and this block
+	// ... within prediction
+	for (i = 0; i < n_0; i++)
+		for (j = i; j < n_0; j++)
+			pairD[symi(i,j)] = sqrt( pow(newS[i]-newS[j], 2) + pow(newS[i+n_0]-newS[j+n_0], 2) );
+	// ... between prediction and block
+	for (i = 0; i < n_0; i++)
+		for (j = 0; j < mNB[block]; j++)
+			pairD[symi(i,n_0+j)] = sqrt( pow(newS[i]-mS[mWhichB[block][j]], 2) + pow(newS[i+n_0]-mS[mWhichB[block][j]+mN], 2) );
+	// ... within block
+	for (i = 0; i < mNB[block]; i++)
+		for (j = 0; j < mNB[block]; j++)
+			pairD[symi(i+n_0,j+n_0)] = mWithinD[block][symi(i,j)];
+
+	for (i = 0; i < symi(0, mMaxPair+n_0); i++) pairD2[i] = pairD[i];
+
+	for (i = 0; i < mNB[block]; i++) pairResids[i] = mResids[mWhichB[block][i]];
+
+	// for each neighboring block...
+	for (ip = 0; ip < mNpairs; ip++) {
+		// get the neighbor
+		if (mNeighbors[ip] == block) {
+			neighbor = mNeighbors[ip + mNpairs];
+		} else if (mNeighbors[ip + mNpairs] == block) {
+			neighbor = mNeighbors[ip];
+		} else {
+			continue;   // not a neighbor
+		}
+
+		N_in_pair = N_block_new+mNB[neighbor];
+		if (block > neighbor) trans = true;
+		else                  trans = false;
+
+		// create distance matrix for this pair...
+		// ... between prediction and neighbor
+		for (i = 0; i < n_0; i++)
+			for (j = 0; j < mNB[neighbor]; j++)
+				pairD[symi(i,j+N_block_new)] = sqrt( pow(newS[i]-mS[mWhichB[neighbor][j]], 2) + pow(newS[i+n_0]-mS[mWhichB[neighbor][j]+mN], 2) );
+		// ... within neighbor
+		for (i = 0; i < mNB[neighbor]; i++)
+			for (j = i; j < mNB[neighbor]; j++)
+				pairD[symi(i+N_block_new,j+N_block_new)] = mWithinD[neighbor][symi(i,j)];
+		// ... between block and neighbor
+		for (i = 0; i < mNB[block]; i++)
+			for (j = 0; j < mNB[neighbor]; j++)
+				pairD[symi(i+n_0,j+N_block_new)] = trans ? mBetweenD[ip][j + i*mNB[neighbor]] : mBetweenD[ip][i + j*mNB[block]];
+
+		// compute covariance between pair
+		mCov->compute(pairSigma, mTheta, N_in_pair, pairD);
+
+		// invert pairSigma
+		if (chol2inv(N_in_pair, pairSigma)) {
+			MSG("blockPredict(): Unable to invert Sigma for pair (%d,%d)\n", block, neighbor);
+			return(false);
+		}
+
+		// add prediction sites of inv(pairSigma) to A_0
+		for (i = 0; i < n_0; i++)
+			for (j =  0; j < n_0; j++)
+				A_0[usymi(i,j,n_0)] += pairSigma[usymi(i,j,N_in_pair)];
+
+		// add to b_0: inv(Sigma_pair)[pred,c(block,neighbor)] x resids[c(block,neighbor)]
+		for (i = 0; i < n_0; i++)
+			for (j = 0; j < N_in_pair; j++)
+				predMat[i+j*n_0] = pairSigma[usymi(i,j,N_in_pair)];
+
+		for (i = 0; i < mNB[neighbor]; i++)
+			pairResids[i+mNB[block]] = mResids[mWhichB[neighbor][i]];
+
+		dgemv_(&cN, &n_0, &N_in_pair, &p1, predMat, &n_0, pairResids, &i1, &p1, b_0, &i1);
+
+		if (do_sd) {
+
+			for (i = 0; i < n_0; i++) {
+				for (j = 0; j < n_0; j++)        B_0[i+j*n_0]       += pairSigma[usymi(i,j,N_in_pair)];
+				for (j = 0; j < mNB[block]; j++) B_0[i+(j+n_0)*n_0] += pairSigma[usymi(i,j+n_0,N_in_pair)];
+			}
+
+			// for each neighboring block...
+			for (ip2 = 0; ip2 < mNpairs; ip2++) {
+				// get the neighbor
+				if (mNeighbors[ip2] == block) {
+					neighbor2 = mNeighbors[ip2 + mNpairs];
+				} else if (mNeighbors[ip2 + mNpairs] == block) {
+					neighbor2 = mNeighbors[ip2];
+				} else {
+					continue;   // not a neighbor
+				}
+
+				N_in_pair2 = N_block_new+mNB[neighbor2];
+				if (block > neighbor2) trans2 = true;
+				else                   trans2 = false;
+
+				// create distance matrix for this pair...
+				// ... between prediction and neighbor
+				for (i = 0; i < n_0; i++)
+					for (j = 0; j < mNB[neighbor2]; j++)
+						pairD2[symi(i,j+N_block_new)] = sqrt( pow(newS[i]-mS[mWhichB[neighbor2][j]], 2) + pow(newS[i+n_0]-mS[mWhichB[neighbor2][j]+mN], 2) );
+				// ... within neighbor
+				for (i = 0; i < mNB[neighbor2]; i++)
+					for (j = i; j < mNB[neighbor2]; j++)
+						pairD2[symi(i+N_block_new,j+N_block_new)] = mWithinD[neighbor2][symi(i,j)];
+				// ... between block and neighbor
+				for (i = 0; i < mNB[block]; i++)
+					for (j = 0; j < mNB[neighbor2]; j++)
+						pairD2[symi(i+n_0,j+N_block_new)] = trans2 ? mBetweenD[ip2][j + i*mNB[neighbor2]] : mBetweenD[ip2][i + j*mNB[block]];
+
+				// compute covariance between pair
+				mCov->compute(pairSigma2, mTheta, N_in_pair2, pairD2);
+
+				// invert pairSigma2
+				if (chol2inv(N_in_pair2, pairSigma2)) {
+					MSG("blockPredict(): Unable to invert Sigma2 for pair (%d,%d)\n", block, neighbor2);
+					return(false);
+				}
+
+				// compute covariance between neighbor and neighbor2
+
+				// are neighbor and neighbor2 neighbors?
+				int neighbor_pair = -1;
+				double *neighborBetweenD;
+				for (i = 0; i < mNpairs; i++) {
+					if ( (mNeighbors[i] == neighbor && mNeighbors[i + mNpairs] == neighbor2) ||
+					     (mNeighbors[i] == neighbor2 && mNeighbors[i + mNpairs] == neighbor) ) {
+						neighbor_pair = i;
+						break;
+					}
+				}
+
+				if (neighbor_pair < 0) {
+					// we need to compute distance between these blocks
+					neighborBetweenD = (double *)malloc(sizeof(double)*mNB[neighbor]*mNB[neighbor2]);
+
+					for (i = 0; i < mNB[neighbor]; i++) { 
+						for (j = 0; j < mNB[neighbor2]; j++) {
+							neighborBetweenD[i + j*mNB[neighbor]] = sqrt(
+								pow(mS[mWhichB[neighbor][i]]-mS[mWhichB[neighbor2][j]], 2) + pow(mS[mWhichB[neighbor][i]+mN]-mS[mWhichB[neighbor2][j]+mN], 2)
+							);
+						}
+					}
+
+					mCov->computeCross(neighborSigma, mTheta, mNB[neighbor], mNB[neighbor2], neighborBetweenD, false);
+
+					free(neighborBetweenD);
+				} else {
+					// we already have distance between these blocks
+					if (neighbor > neighbor2) trans2 = true;
+					else                      trans2 = false;
+
+					mCov->computeCross(neighborSigma, mTheta, mNB[neighbor], mNB[neighbor2], mBetweenD[neighbor_pair], false, false, trans2);
+				}
+
+				// add to J_0: inv(Sigma_pair)[pred,neighbor] x Sigma_n1n2[neighbor,neighbor2] x inv(Sigma_pair2)[neighbor2,pred]
+				dgemm_(&cN, &cN, &n_0, &mNB[neighbor2], &mNB[neighbor], &p1, predMat, &n_0, neighborSigma, &mNB[neighbor], &zero, predMat2, &n_0);
+
+				for (i = 0; i < n_0; i++)
+					for (j = 0; j < N_in_pair2; j++)
+						predMat[i+j*n_0] = pairSigma2[usymi(i,j,N_in_pair2)];
+
+				dgemm_(&cN, &cN, &n_0, &n_0, &mNB[neighbor2], &p1, predMat2, &n_0, predMat, &mNB[neighbor2], &p1, J_0, &n_0);
+
+			}
+
+		}
+	}  // end neighbor
+
+	// invert A_0
+	if (chol2inv(n_0, A_0)) {
+		MSG("blockPredict(): unable to invert A_0\n");
+		return(false);
 	}
+
+	// negate b_0
+	for (i = 0; i < n_0; i++) b_0[i] = -b_0[i];
+
+	// set y_0[pred] = newX[pred] x beta + inv(A_0) x b_0
+	dgemv_(&cN, &n_0, &mNbeta, &p1, newX, &n_0, mBeta, &i1, &zero, y_0, &i1);
+	dgemv_(&cN, &n_0, &n_0, &p1, A_0, &n_0, b_0, &i1, &p1, y_0, &i1);
+
+	if (do_sd) {
+		// negate A_0
+		for (i = 0; i < n_0*n_0; i++) A_0[i] = -A_0[i];
+
+		// add to J_0: B_0 x Sigma_block x t(B_0)...
+		// ...compute covariance for this block
+		mCov->compute(pairSigma, mTheta, N_block_new, pairD);
+
+		// ... multiplty B_0 x pairSigma x t(B_0)
+		dgemm_(&cN, &cN, &n_0, &mNB[block], &N_block_new, &p1, B_0, &n_0, pairSigma, &N_block_new, &zero, predMat, &n_0);
+		dgemm_(&cN, &cT, &n_0, &n_0, &N_block_new, &p1, predMat, &n_0, B_0, &n_0, &p1, J_0, &n_0);
+
+		// for each neighboring block...
+		for (ip = 0; ip < mNpairs; ip++) {
+			// get the neighbor
+			if (mNeighbors[ip] == block) {
+				neighbor = mNeighbors[ip + mNpairs];
+			} else if (mNeighbors[ip + mNpairs] == block) {
+				neighbor = mNeighbors[ip];
+			} else {
+				continue;   // not a neighbor
+			}
+
+			N_in_pair = N_block_new+mNB[neighbor];
+			if (block > neighbor) trans = true;
+			else                  trans = false;
+
+			// create distance matrix for this pair...
+			// ... between prediction and neighbor
+			for (i = 0; i < n_0; i++)
+				for (j = 0; j < mNB[neighbor]; j++)
+					pairD[symi(i,j+N_block_new)] = sqrt( pow(newS[i]-mS[mWhichB[neighbor][j]], 2) + pow(newS[i+n_0]-mS[mWhichB[neighbor][j]+mN], 2) );
+			// ... within neighbor
+			for (i = 0; i < mNB[neighbor]; i++)
+				for (j = i; j < mNB[neighbor]; j++)
+					pairD[symi(i+N_block_new,j+N_block_new)] = mWithinD[neighbor][symi(i,j)];
+			// ... between block and neighbor
+			for (i = 0; i < mNB[block]; i++)
+				for (j = 0; j < mNB[neighbor]; j++)
+					pairD[symi(i+n_0,j+N_block_new)] = trans ? mBetweenD[ip][j + i*mNB[neighbor]] : mBetweenD[ip][i + j*mNB[block]];
+
+			// compute covariance between pair
+			mCov->compute(pairSigma, mTheta, N_in_pair, pairD);
+
+//			for (i = 0; i < N_in_pair;
+
+			// invert pairSigma
+			if (chol2inv(N_in_pair, pairSigma)) {
+				MSG("blockPredict(): Unable to invert Sigma for pair (%d,%d)\n", block, neighbor);
+				return(false);
+			}
+
+/*
+           # covariance for b and n1
+            Sigma.n1    <- compute_cov(object$cov, theta, D[in.pair.n1,in.pair.n1])
+            invSigma.n1 <- chol2inv(chol(Sigma.n1))
+
+            J_0 <- J_0 + 2 * B_0 %*% Sigma.n1[1:n.in.b,n.in.b+1:n.in.n1] %*% invSigma.n1[n.in.b+1:n.in.n1,1:n.in.new]
+*/
+		}
+
+for (i = 0; i < n_0; i++) { for (j = 0; j < n_0; j++) MSG("%.2f ", J_0[i + j*n_0]); MSG("\n"); }
+	}
+
+/*
+	- For each block we have prediction sites in...
+		o We must construct A_0 (n_0 by n_0) and b_0 (n_0 by 1)
+		o For prediction SDs, we must construct J_0 (n_0 by n_0) and B_0 (n_0 by n_0+n_block)
+		o For each neighboring block (neighbor):
+			- Invert Cov(Y_pair) to get inv(Sigma_pair)
+			- Add the n_0 block of inv(Sigma_pair) to A_0
+			- Add to b_0: inv(Sigma_pair)[pred,block] x resids_block + inv(Sigma_pair)[pred,neighbor] x resids_neighbor
+				o Can probably write this as: inv(Sigma_pair)[pred,c(block,neighbor)] x resids[c(block,neighbor)]
+			- For prediction SDs:
+				o Add to B_0: inv(Sigma_pair)[pred,c(pred,block)]
+				o For each neighboring block (neighbor2):
+					- Invert Cov(Y_pair2) to get inv(Sigma_pair2)
+					- Compute Cov(neighbor,neighbor2)
+					- Add to J_0: inv(Sigma_pair)[pred,neighbor] x Sigma_n1n2[neighbor,neighbor2] x inv(Sigma_pair2)[n2,pred]
+							J_0 <- J_0 + invSigma.n1[1:n.in.new,n.in.new+n.in.obs+1:n.in.n1] %*%
+								Sigma.n1n2[1:n.in.n1,n.in.n1+1:n.in.n2] %*% invSigma.n2[n.in.new+n.in.obs+1:n.in.n2,1:n.in.new]
+		o Invert A_0
+		o Negate b_0
+		o Take y_0[pred] = newX[pred] x beta + inv(A_0) x b_0
+		o For prediction SDs:
+			- Take H_0 = -A_0
+			- Add to J_0: B_0 x Sigma_block x t(B_0)
+					Sigma <- compute_cov(object$cov, theta, D[in.b,in.b])
+					J_0   <- J_0 + B_0 %*% Sigma %*% t(B_0)
+			- For each neighboring block (neighbor):
+				o Compute inv(Sigma[c(new,block,neighbor)])
+				o Add to J_0: 2 x B_0 x Sigma[block,neighbor] x inv(Sigma)[neighbor,pred]
+			- Compute prediction SDs: sqrt(diag( inv(H_0 x inv(J_0) x H_0) ))
+
+*/
+
+	return(true);
+}
+
+void BlockComp::getBeta(double *beta) {
+	for (int i = 0; i < mNbeta; i++) beta[i] = mBeta[i];
 }
 
 void BlockComp::getTheta(double *theta) {
-	for (int i = 0; i < mNtheta; i++) {
-		theta[i] = mTheta[i];
-	}
+	for (int i = 0; i < mNtheta; i++) theta[i] = mTheta[i];
 }
 
 #ifdef CLINE
@@ -1846,8 +2265,8 @@ void BlockComp::getTheta(double *theta) {
 void test_bc(int nthreads, bool gpu) {
 	BlockComp blk(nthreads, gpu);
 
-	//blk.setLikForm(BlockComp::Block);
-	blk.setLikForm(BlockComp::Full);
+	blk.setLikForm(BlockComp::Block);
+	//blk.setLikForm(BlockComp::Full);
 	blk.setCovType(BlockComp::Exp);
 
 	if (!blk.setData(test_n, test_y, test_S, test_nblocks, test_B, test_p, test_X, test_npairs, test_neighbors)) {
@@ -1878,10 +2297,13 @@ void test_bc(int nthreads, bool gpu) {
 MSG("predicted y_0: %.2f (%.3f)\n", newY[0], newSD[0]);
 */
 	double newS[] = { 0.75, 0.6, 0.80, 0.85 };
+	int newB[] = { 1, 1 };
 	double newX[] = { 1.0, 1.0, 0.0, 0.0 };
-	double newY[] = { 0.0, 0.0 };
-	double newSD[] = { 0.0, 0.0 };
-	blk.predict(2, newY, newS, newX, true, newSD);
+	double newY[] = { 0, 0 };
+	double newSD[] = { 0, 0 };
+blk.predict(2, newY, newS, newB, newX, true, newSD);
+MSG("predicted y_0: %.2f (%.3f); %.2f (%.3f)\n", newY[0], newSD[0], newY[1], newSD[1]);
+blk.predict(2, newY, newS, newB, newX, false, newSD);
 MSG("predicted y_0: %.2f (%.3f); %.2f (%.3f)\n", newY[0], newSD[0], newY[1], newSD[1]);
 }
 

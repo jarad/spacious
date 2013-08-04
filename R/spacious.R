@@ -5,7 +5,8 @@
 	B, neighbors,
 	fixed=list(smoothness=0.5),             # fixed parameters
 	blocks=list(type="cluster"),            # blocking style
-	verbose=FALSE, tol=1e-3, maxIter=100,   # algorithm control params
+	verbose=FALSE, tol=1e-3, maxIter=25,    # algorithm control params
+	compute_se=FALSE, compute_diag=FALSE,
 	nthreads=1, gpu=FALSE,
 	engine="C"                              # use C or R implementation?
 ) {
@@ -33,48 +34,48 @@
 	# setup based on covariance types
 	R <- NA    # number of covariance parameters
 	theta <- c()
-	theta.fixed <- c()
+	theta_fixed <- c()
 
 	# handle covariance types
 	if (cov == "exp") {
 		R <- 3
 
 		theta <- rep(0, R)
-		theta.fixed <- rep(FALSE, R)
+		theta_fixed <- rep(FALSE, R)
 
 		if (!is.null(fixed$nugget)) {
 			theta[1] <- fixed$nugget
-			theta.fixed[1] <- TRUE
+			theta_fixed[1] <- TRUE
 		}
 		if (!is.null(fixed$psill)) {
 			theta[2] <- fixed$psill
-			theta.fixed[2] <- TRUE
+			theta_fixed[2] <- TRUE
 		}
 		if (!is.null(fixed$range)) {
 			theta[3] <- fixed$range
-			theta.fixed[3] <- TRUE
+			theta_fixed[3] <- TRUE
 		}
 	} else if (cov == "matern") {
 		R <- 4
 
 		theta <- rep(0, R)
-		theta.fixed <- rep(FALSE, R)
+		theta_fixed <- rep(FALSE, R)
 
 		if (!is.null(fixed$nugget)) {
 			theta[1] <- fixed$nugget
-			theta.fixed[1] <- TRUE
+			theta_fixed[1] <- TRUE
 		}
 		if (!is.null(fixed$psill)) {
 			theta[2] <- fixed$psill
-			theta.fixed[2] <- TRUE
+			theta_fixed[2] <- TRUE
 		}
 		if (!is.null(fixed$range)) {
 			theta[3] <- fixed$range
-			theta.fixed[3] <- TRUE
+			theta_fixed[3] <- TRUE
 		}
 		if (!is.null(fixed$smooth)) {
 			theta[4] <- fixed$smooth
-			theta.fixed[4] <- TRUE
+			theta_fixed[4] <- TRUE
 		} else {
 			stop("Smoothness must be fixed")
 		}
@@ -82,9 +83,9 @@
 		stop(paste("Unknown covariance type",cov))
 	}
 
-	if (sum(!theta.fixed) > 0) {
+	if (sum(!theta_fixed) > 0) {
 		# compute some initial values
-		which.inits <- which(theta.fixed[1:3] == FALSE)
+		which.inits <- which(theta_fixed[1:3] == FALSE)
 		if (length(which.inits) > 0) {
 			theta[which.inits] <- (initial.theta(y, S))[which.inits]
 		}
@@ -204,43 +205,66 @@
 			nthreads <- 1
 		}
 
-		fit <- .C(spacious_fit, y=as.double(y), X=as.double(X), S=as.double(S), B=as.integer(B-1), neighbors=as.integer(neighbors-1),
-		                        n=as.integer(n), p=as.integer(p), nblocks=as.integer(blocks$nblocks), npairs=as.integer(nrow(neighbors)),
-		                        lik_form=as.character(lik_form), cov=as.character(cov),
-		                        theta=as.double(theta), theta_fixed=as.logical(theta.fixed), beta=as.double(rep(0, p)),
-		                        verbose=as.logical(verbose), tol=as.double(tol), max_iter=as.integer(maxIter),
-		                        nthreads=as.integer(nthreads), gpu=as.logical(gpu),
-		                        convergence=as.logical(FALSE), nIter=as.integer(0),
-		                        NAOK=FALSE
+		fit <- .C(spacious_fit,
+		          # input data
+		          y=as.double(y), X=as.double(X), S=as.double(S), B=as.integer(B-1), neighbors=as.integer(neighbors-1),
+		          n=as.integer(n), p=as.integer(p), nblocks=as.integer(blocks$nblocks), npairs=as.integer(nrow(neighbors)),
+		          # type of model to fit
+		          lik_form=as.character(lik_form), cov=as.character(cov),
+		          # parameter estimates and convergence info
+		          theta=as.double(theta), theta_fixed=as.logical(theta_fixed), beta=as.double(rep(0, p)),
+		          convergence=as.logical(FALSE), nIter=as.integer(0),
+		          # standard errors
+		          se_beta=as.double(rep(NA, p)), se_theta=as.double(rep(NA, R)),
+		          vcov_beta=as.double(rep(NA, p*p)), vcov_theta=as.double(rep(NA, R*R)),
+		          # fitted values and residuals
+		          fitted=as.double(rep(0, n)), resids=as.double(rep(0, n)),
+		          # values of theta and log likelihood at each iteration
+		          iters_theta=as.double(rep(NA, maxIter)), iters_ll=as.double(rep(NA, maxIter)),
+		          # fitting control parameters
+		          verbose=as.logical(verbose), tol=as.double(tol), max_iter=as.integer(maxIter), compute_se=as.logical(compute_se),
+		          # parallelization options
+		          nthreads=as.integer(nthreads), gpu=as.logical(gpu),
+		          NAOK=TRUE
 		)
 
-		fit$se.beta  <- rep(NA, p)
-		fit$se.theta <- rep(NA, R)
+		fit$engine <- "C"
+
+		# cleanup a few things
+		fit$X <- NULL
+		fit$n <- NULL
+		fit$p <- NULL
+		fit$npairs <- NULL
 	} else if (engine == "R") {
-		fit <- spacious.fit(y, X, S, blocks$nblocks, B, neighbors, cov, n, p, R, theta, theta.fixed,
+		fit <- spacious.fit(y, X, S, blocks$nblocks, B, neighbors, cov, n, p, R, theta, theta_fixed,
 			verbose, tol, maxIter)
+
+		fit$engine      <- "R"
+		fit$lik_form    <- lik_form
+		fit$cov         <- cov
+		fit$beta        <- as.vector(fit$beta)
+		fit$theta       <- as.vector(fit$theta)
+		fit$theta_fixed <- theta_fixed
+
+		fit$nblocks <- blocks$nblocks
+		fit$fitted  <- X %*% fit$beta
+		fit$resids  <- y - fit$fitted
 	} else {
 		stop(paste0("Unknown engine ",engine,"\n"))
 	}
 	t <- proc.time()-t1
 
 	# construct output fit
-	fit$time  <- t
-	fit$beta  <- as.vector(fit$beta)
-	fit$theta <- as.vector(fit$theta)
-	fit$theta.fixed <- theta.fixed
+	fit$time      <- t
 
 	fit$y         <- y
 	fit$S         <- S
-	fit$nblocks   <- blocks$nblocks
 	fit$B         <- B
 	fit$grid      <- grid
 	fit$neighbors <- neighbors
 	fit$cov       <- cov
 
 	fit$terms  <- attr(mf, "terms")
-	fit$fitted <- X %*% fit$beta
-	fit$resids <- fit$y - fit$fitted
 
 	class(fit) <- "spacious"
 

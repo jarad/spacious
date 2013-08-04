@@ -21,7 +21,8 @@ CovExp::CovExp() {
 	mNparams = 3;
 }
 
-void CovExp::compute(double *Sigma, double *theta, int n1, double *D1, int n2, double *D2, double *Dc, bool packed) {
+void CovExp::compute(double *Sigma, double *theta, int n1, double *D1,
+                     int n2, double *D2, double *Dc, bool packed, bool transpose) {
 	int i,j;
 	int index;
 	int n = n1+n2;
@@ -48,10 +49,32 @@ void CovExp::compute(double *Sigma, double *theta, int n1, double *D1, int n2, d
 		}
 
 		// cross terms
+		computeCross(Sigma, theta, n1, n2, Dc, true, packed, transpose);
+	}
+}
+
+void CovExp::computeCross(double *Sigma, double *theta, int n1, int n2, double *Dc, bool full, bool packed, bool transpose) {
+	// fill Sigma with cross terms
+	int i,j;
+	int index;
+	int n = n1+n2;
+
+	if (full) {
+		// we are filling in the (n1, n2) block of Sigma
 		for (i = 0; i < n1; i++) {
 			for (j = 0; j < n2; j++) {
 				if (packed) { index = symi(i,j+n1); } else { index = usymi(i,j+n1,n); }
-				Sigma[index] = theta[1] * exp(-Dc[i + j*n1]/theta[2]);
+
+				if (transpose) Sigma[index] = theta[1] * exp(-Dc[j + i*n2]/theta[2]);
+				else           Sigma[index] = theta[1] * exp(-Dc[i + j*n1]/theta[2]);
+			}
+		}
+	} else {
+		// we are filling in the n1 x n2 matrix Sigma that only has cross terms
+		for (i = 0; i < n1; i++) {
+			for (j = 0; j < n2; j++) {
+				if (transpose) Sigma[j + i*n2] = theta[1] * exp(-Dc[j + i*n2]/theta[2]);
+				else           Sigma[i + j*n1] = theta[1] * exp(-Dc[i + j*n1]/theta[2]);
 			}
 		}
 	}

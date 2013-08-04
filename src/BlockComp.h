@@ -36,21 +36,15 @@ public:
 	bool setData(int n, double *y, double *S, int nblocks, int *B, int p, double *X, int npairs, int *neighbors);
 	void setInits(double *theta);
 	void setFixed(bool *fixed, double *values);
-	void computeWithinDistance(int n, double *S, double *D);
-	void computeBetweenDistance(int n1, double *S1, int n2, double *S2, double *D);
+	void computeWithinDistance(int n, const double *S, double *D);
+	void computeBetweenDistance(int n1, const double *S1, int n2, const double *S2, double *D);
 
 	// fit model with Fisher scoring
 	bool fit(bool verbose);
 
-	// compute log likelihood at specified parameters
-	double computeLogLik(double *beta, double *theta);
-
 	// methods to compute quantities of interest (requires fit)
-	void computeStdErrs();
-	void computeCLIC();
-	void computeFitted(double *fitted);
-	void computeResiduals(double *resids, const double *fitted);
-	bool predict(int n_0, double *y_0, double *newS, double *newX, bool do_sd, double *sd);
+	bool predict(int n_0, double *y_0, const double *newS, const int *newB, const double *newX,
+	             bool do_sd, double *sd, bool local=false, int Nlocal=25);
 
 	// extract items of interest
 	void getBeta(double *beta);
@@ -58,15 +52,27 @@ public:
 	bool getConverged() { return(mConverged); }
 	int  getIters()     { return(mIters); }
 
+	void getFitted(double *fitted);
+	void getResiduals(double *resids);
+
 private:
 	void cleanup();
 
 	void setThreads(int nthreads);
 
+	double computeLogLik(double *beta, double *theta);
+	void computeFitted();
+	void computeFitted(int n, double *fitted, double *X);
+	void computeResiduals();
+	void computeStdErrs();
+	void computeCLIC();
+
 	bool updateBeta();
 	bool updateBetaPair(int pair, double *Sigma, double *A, double *b);
 	bool updateTheta();
 	bool updateThetaPair(int pair, double *Sigma, double **W, double *H, double *P, double *resids, double *q, double *u);
+
+	bool blockPredict(int block, int n_0, double *y_0, const double *newS, const double *newX, bool do_sd, double *sd);
 
 	int     mNthreads;   // number of processing threads
 
@@ -77,7 +83,7 @@ private:
 	int      mNblocks;    // total number of blocks
 	int     *mB;          // block membership
 	int     *mNB;         // number of observations in each block
-	int    **mWhichB;     // holds indicies for obs in each block
+	int    **mWhichB;     // holds indices for obs in each block
 	double **mWithinD;    // within block distance matrices
 	double **mBetweenD;   // between block distance matrices
 
@@ -110,6 +116,9 @@ private:
 	double *mBeta;        // model parametes
 	double *mTheta;
 	double *mThetaT;      // transformed model parametes
+
+	double *mFitted;      // fitted values
+	double *mResids;      // residuals
 
 	// update vars
 	double **mSigma;

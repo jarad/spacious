@@ -1,15 +1,15 @@
 # summarizes fit of block composite model from spacious
 "summary.spacious" <- function(object, ...) {
-	p.beta <- rep(NA, length(object$beta))
-	if (!is.null(object$se.beta)) {
-		p.beta <- sapply(object$beta/object$se.beta,
+	p_beta <- rep(NA, length(object$beta))
+	if (!is.null(object$se_beta)) {
+		p_beta <- sapply(object$beta/object$se_beta,
 			function(z) {
 				2*( 1-pnorm(abs(z)) )
 			})
 	}
 
-	df.beta <- data.frame(beta=object$beta, se=object$se.beta, p=p.beta)
-	df.theta <- data.frame(theta=object$theta, se=object$se.theta)
+	df.beta <- data.frame(beta=object$beta, se=object$se_beta, p=p_beta)
+	df.theta <- data.frame(theta=object$theta, se=object$se_theta)
 
 	colnames(df.beta) <- c("Estimate","Std Err","P-value")
 	rownames(df.beta) <- paste0("b",0:(nrow(df.beta)-1) )

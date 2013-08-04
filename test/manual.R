@@ -48,7 +48,7 @@ fit <- spacious(anom ~ lon + lat + elev, S=S, data=anom.2011, cov="matern", fixe
 print(summary(fit))
 }
 
-if (FALSE) {
+if (TRUE) {
 # blocking structures
 library(maps)
 #fit_c <- spacious(anom ~ lon + lat + elev, S=S, data=anom.2011, blocks=list(type="cluster"))
@@ -67,7 +67,7 @@ pdf("pdf/manual_blocks_r.pdf")
 graphics.off()
 }
 
-if (TRUE) {
+if (FALSE) {
 # predictions
 #fit     <- spacious(anom~lon + lat + elev, S=S, data=anom.2011)
 S.p     <- cbind(anom.pred.grid$lon, anom.pred.grid$lat)

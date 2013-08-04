@@ -15,8 +15,11 @@ public:
 	// computes covariance matrix
 	// - D1 is n1 by n1 holding distances between locations of interest
 	// - Optionally, n2/D2 and nc/Dc can be used for filling in partials for a 2nd distance matrix and cross terms
+	// - transpose = true uses Dc'
 	virtual void compute(double *Sigma, double *theta, int n, double *D, bool packed = false);
-	virtual void compute(double *Sigma, double *theta, int n1, double *D1, int n2, double *D2, double *Dc, bool packed = false) = 0;
+	virtual void compute(double *Sigma, double *theta, int n1, double *D1,
+	                     int n2, double *D2, double *Dc, bool packed = false, bool transpose = false) = 0;
+	virtual void computeCross(double *Sigma, double *theta, int n1, int n2, double *Dc, bool full, bool packed = false, bool transpose = false) = 0;
 
 	// obtain partial derivatives for parameters (in terms of on real line scale)
 	// - Fills matrix of patrial derivatives P with respect to param
@@ -42,7 +45,9 @@ class CovExp : public Cov {
 public:
 	CovExp();
 
-	virtual void compute(double *Sigma, double *theta, int n1, double *D1, int n2, double *D2, double *Dc, bool packed = false);
+	virtual void compute(double *Sigma, double *theta, int n1, double *D1,
+	                     int n2, double *D2, double *Dc, bool packed = false, bool transpose = false);
+	virtual void computeCross(double *Sigma, double *theta, int n1, int n2, double *Dc, bool full, bool packed = false, bool transpose = false);
 	virtual void partials(double *P, bool *diag, int param, double *theta, double *thetaT,
 	                      int n1, double *D1, int n2, double *D2, double *Dc, bool packed = false);
 	virtual void transformToReal(double *theta);

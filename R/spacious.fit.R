@@ -1,6 +1,6 @@
 # function to run algorithm for fitting a block composite model
-"spacious.fit" <- function(y, X, S, nblocks, B, neighbors, cov, n, p, R, theta, theta.fixed,
-	verbose, tol=1e-3, maxIter=100) {
+"spacious.fit" <- function(y, X, S, nblocks, B, neighbors, cov, n, p, R, theta, theta_fixed,
+	verbose, tol=1e-3, maxIter=100, compute_se=FALSE) {
 	# y: response
 	# X: model matrix
 	# S: spatial locations
@@ -12,7 +12,7 @@
 	# p: number of parameters for mean (columns of X)
 	# R: number of covariance function parameters
 	# theta: initial values for covariance parameters
-	# theta.fixed: TRUE/FALSE indicating if parameter is fixed
+	# theta_fixed: TRUE/FALSE indicating if parameter is fixed
 
 	# verbose: print messages?
 	# tol: error tolerance for identifying convergence
@@ -31,9 +31,9 @@
 	seq.RH <- 1:nH
 
 	# how many parameters are not fixed?
-	Nnot_fixed <- length(theta.fixed)-sum(theta.fixed)
-	which.fixed <- which(theta.fixed==TRUE)
-	which.not_fixed <- which(theta.fixed==FALSE)
+	Nnot_fixed <- length(theta_fixed)-sum(theta_fixed)
+	which.fixed <- which(theta_fixed==TRUE)
+	which.not_fixed <- which(theta_fixed==FALSE)
 
 	# a list of functions to compute partial derivates
 	# with respect to each covariance function param
@@ -141,7 +141,7 @@
 
 			# compute the Ws
 			for (r in 1:R) {
-				if (theta.fixed[r]) { next; }
+				if (theta_fixed[r]) { next; }
 
 				partial <- partials[[r]](theta, n.pair, in.pair)
 				W[[r]] <<- invSigma %*% partial
@@ -153,7 +153,7 @@
 			index <- 1
 			sapply(seq.R, function(r) {
 				sapply(r:R, function(s) {
-					if (!theta.fixed[r] & !theta.fixed[s]) {
+					if (!theta_fixed[r] & !theta_fixed[s]) {
 						H[index] <<- H[index] + 0.5 * sum(diag( W[[r]] %*% W[[s]] ))
 					}
 					index <<- index+1
@@ -165,7 +165,7 @@
 		index <- 1
 		sapply(seq.R, function(r) {
 			sapply(r:R, function(s) {
-				if (!theta.fixed[r] & !theta.fixed[s]) {
+				if (!theta_fixed[r] & !theta_fixed[s]) {
 					FI[r,s] <<- H[index]
 					if (r != s) {
 						FI[s,r] <<- H[index]
@@ -215,8 +215,8 @@
 	ll <- -2 * loglik(beta,theta)
 
 	# save theta and log lik at each iteration
-	iters.theta <- t_theta(theta)
-	iters.ll    <- ll
+	iters_theta <- t_theta(theta)
+	iters_ll    <- ll
 
 	for (iter in 1:maxIter) {
 		prev.beta <- beta
@@ -233,14 +233,16 @@
 		ll <- -2 * loglik(beta, theta)
 
 		# save values at each iteration
-		iters.theta <- rbind( iters.theta, t_theta(theta) )
-		iters.ll    <- c( iters.ll, ll )
+		iters_theta <- rbind( iters_theta, t_theta(theta) )
+		iters_ll    <- c( iters_ll, ll )
 
 		if (verbose) {
-			show <- c(beta, t_theta(theta), ll)
-			names(show) <- names.show
-			cat("iter ",iter,":\n",sep="")
-			print( show )
+			cat(
+				paste0("iter=",iter,
+					": beta: ",paste(round(beta,2),collapse=" "),
+					" ; theta: ",paste(round(t_theta(theta),2),collapse=" "),
+					" ; ll=", round(ll,2)),
+			"\n")
 		}
 
 		# have we converged?
@@ -268,10 +270,10 @@
 	}
 
 	# compute covariance matrix of parameters
-	vcov.beta <- matrix(0, nrow=p, ncol=p)
+	vcov_theta <- matrix(0, nrow=p, ncol=p)
 	vcov.theta <- matrix(0, nrow=R, ncol=R)
-	se.beta <- rep(0, p)
-	se.theta <- rep(0, R)
+	se_beta <- rep(0, p)
+	se_theta <- rep(0, R)
 
 if (FALSE) { # compute standard errors
 	# update hessian
@@ -355,7 +357,7 @@ if (FALSE) {
 if (FALSE) {
 				sapply(seq.R, function(r) {
 					sapply(r:R, function(s) {
-						if (!theta.fixed[r] & !theta.fixed[s]) {
+						if (!theta_fixed[r] & !theta_fixed[s]) {
 							add <- .5*sum(diag( invSigma.i %*% partials[[r]](theta, n.i, in.i) %*% invSigma.i %*% partials[[s]](theta, n.i, in.i) ))
 
 							J.theta[r,s] <<- J.theta[r,s] + add
@@ -373,7 +375,7 @@ if (FALSE) {
 				if (j > i) {
 					sapply(seq.R, function(r) {
 						sapply(r:R, function(s) {
-							if (!theta.fixed[r] & !theta.fixed[s]) {
+							if (!theta_fixed[r] & !theta_fixed[s]) {
 								B.ir <- invSigma.i %*% partials[[r]](theta, n.i, in.i) %*% invSigma.i
 								B.js <- invSigma.j %*% partials[[s]](theta, n.j, in.j) %*% invSigma.j
 								add  <- sum(diag( B.ir %*% Sigma.ij[1:n.i,n.i+1:n.j] %*% B.js %*% Sigma.ij[n.i+1:n.j,1:n.i] ))
@@ -397,7 +399,7 @@ print(round(FI,3))
 print(round(J.theta,3))
 print(round(FI %*% solve(J.theta),3))
 
-	vcov.beta  <- chol2inv(chol(A %*% chol2inv(chol(J.beta)) %*% A))
+	vcov_theta  <- chol2inv(chol(A %*% chol2inv(chol(J.beta)) %*% A))
 	if (Nnot_fixed > 0) {
 		vcov.theta[which.not_fixed,which.not_fixed] <- chol2inv(chol(FI[which.not_fixed,which.not_fixed] %*%
 			chol2inv(chol(J.theta[which.not_fixed,which.not_fixed])) %*% FI[which.not_fixed,which.not_fixed]))
@@ -408,19 +410,20 @@ print(round(FI %*% solve(J.theta),3))
 	theta <- t_theta(theta)
 
 	# get the standard errors
-	se.beta  <- sqrt(diag(vcov.beta))
-	se.theta <- as.vector(sqrt(diag(vcov.theta)) * theta)
+	se_beta  <- sqrt(diag(vcov_theta))
+	se_theta <- as.vector(sqrt(diag(vcov.theta)) * theta)
 
 	# transform theta[3] to range form
 	theta[3]        <- 1/theta[3]
-	se.theta[3]     <- se.theta[3] * theta[3]^2
-	iters.theta[,3] <- 1/iters.theta[,3]
+	se_theta[3]     <- se_theta[3] * theta[3]^2
+	iters_theta[,3] <- 1/iters_theta[,3]
 
 	# return estimates and standard errors
 	list(
-		convergence=convergence, nIter=iter, iters.theta=iters.theta, iters.ll=iters.ll,
+		convergence=convergence, nIter=iter,
+		iters_theta=iters_theta, iters_ll=iters_ll,
 		beta=beta, theta=theta, ll=ll,
-		se.beta=se.beta, se.theta=se.theta,
-		vcov.beta=vcov.beta, vcov.theta=vcov.theta
+		se_beta=se_beta, se_theta=se_theta,
+		vcov_theta=vcov_theta, vcov_theta=vcov_theta
 	)
 }

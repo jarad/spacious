@@ -9,10 +9,11 @@ if ("package:spacious" %in% search()) {
 # load the package
 require(spacious)
 
+if (TRUE) {
 set.seed(311)
 
 # generate data to use for fitting a block composite model
-n <- 2*1024
+n <- 1024
 np <- 5   # number to predict
 
 # generate spatial locations S
@@ -43,6 +44,7 @@ X.fit <- matrix(x1[1:n], nrow=n, ncol=1)
 X.pred <- matrix(x1[n+1:np], nrow=np, ncol=1)
 S.fit <- S[1:n,]
 S.pred <- S[n+1:np,]
+}
 
 if (FALSE) { # test with lm()
 	fit <- lm(y.fit~X.fit)
@@ -51,12 +53,6 @@ print(fit)
 print(preds)
 done
 }
-
-time.spacious <- proc.time()
-#fit.spacious <- spacious(y, X, S, cov="exp", nblocks=1^2)
-#fit.spacious <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="exp", nblocks=2^2, verbose=TRUE)
-#fit.spacious <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="exp", blocks=list(type="regular", nblocks=2^2), verbose=TRUE)
-#fit.spacious <- spacious(y.fit~X.fit, S=S.fit, cov="exp", blocks=list(type="regular", nblocks=2^2), verbose=TRUE)
 
 if (FALSE) {
 # try this 500 times
@@ -67,24 +63,41 @@ for (i in 1:500) {
 done
 }
 
+if (TRUE) { # GPU vs not
 fit.spacious <- spacious(y~x, data=data.frame(y=y[1:n], x=x1[1:n]), S=S[1:n,], cov="exp", blocks=list(type="full"), nthreads=1, gpu=TRUE, verbose=TRUE)
 print(fit.spacious$time)
 
 fit.spacious <- spacious(y~x, data=data.frame(y=y[1:n], x=x1[1:n]), S=S[1:n,], cov="exp", blocks=list(type="full"), nthreads=1, gpu=FALSE, verbose=TRUE)
 print(fit.spacious$time)
+done
+}
+
+if (FALSE) { # threads
+cat("Fitting...\n")
+fit.spacious <- spacious(y~x, data=data.frame(y=y[1:n], x=x1[1:n]), S=S[1:n,], cov="exp", blocks=list(type="regular", nblocks=6^2), nthreads=4, gpu=FALSE, verbose=TRUE)
+print(fit.spacious$time)
+#fit.spacious <- spacious(y~x, data=data.frame(y=y[1:n], x=x1[1:n]), S=S[1:n,], cov="exp", blocks=list(type="regular", nblocks=6^2), nthreads=3, gpu=FALSE)
+#print(fit.spacious$time)
+#fit.spacious <- spacious(y~x, data=data.frame(y=y[1:n], x=x1[1:n]), S=S[1:n,], cov="exp", blocks=list(type="regular", nblocks=6^2), nthreads=2, gpu=FALSE)
+#print(fit.spacious$time)
+#fit.spacious <- spacious(y~x, data=data.frame(y=y[1:n], x=x1[1:n]), S=S[1:n,], cov="exp", blocks=list(type="regular", nblocks=6^2), nthreads=1, gpu=FALSE)
+#print(fit.spacious$time)
+}
+
+if (TRUE) { # compare R vs C
+	fit.R <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="exp", blocks=list(type="regular", nblocks=6^2), verbose=TRUE, engine="R")
+	fit.C <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="exp", blocks=list(type="regular", nblocks=6^2), verbose=TRUE, engine="C")
+	preds.R <- predict(fit.R, newdata=data.frame(x2=x1[(n+1):(n+np)]), newS=S[(n+1):(n+np),], interval="prediction", level=0.9)
+	preds.C <- predict(fit.C, newdata=data.frame(x2=x1[(n+1):(n+np)]), newS=S[(n+1):(n+np),], interval="prediction", level=0.9)
+}
 
 done
-fit.spacious <- spacious(y~x, data=data.frame(y=y[1:n], x=x1[1:n]), S=S[1:n,], cov="exp", blocks=list(type="regular", nblocks=6^2), nthreads=1)
-print(fit.spacious$time)
-fit.spacious <- spacious(y~x, data=data.frame(y=y[1:n], x=x1[1:n]), S=S[1:n,], cov="exp", blocks=list(type="regular", nblocks=6^2), nthreads=2)
-print(fit.spacious$time)
-fit.spacious <- spacious(y~x, data=data.frame(y=y[1:n], x=x1[1:n]), S=S[1:n,], cov="exp", blocks=list(type="regular", nblocks=6^2), nthreads=3)
-print(fit.spacious$time)
-fit.spacious <- spacious(y~x, data=data.frame(y=y[1:n], x=x1[1:n]), S=S[1:n,], cov="exp", blocks=list(type="regular", nblocks=6^2), nthreads=4)
-print(fit.spacious$time)
 
-done
-
+time.spacious <- proc.time()
+#fit.spacious <- spacious(y, X, S, cov="exp", nblocks=1^2)
+#fit.spacious <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="exp", nblocks=2^2, verbose=TRUE)
+fit.spacious <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="exp", blocks=list(type="regular", nblocks=6^2), verbose=TRUE, nthreads=4, gpu=FALSE)
+#fit.spacious <- spacious(y.fit~X.fit, S=S.fit, cov="exp", blocks=list(type="regular", nblocks=2^2), verbose=TRUE)
 #fit.spacious <- spacious(y~x, data=data.frame(y=y[1:n], x=x1[1:n]), S=S[1:n,], cov="exp", blocks=list(type="full"), verbose=TRUE)
 time.spacious <- proc.time() - time.spacious
 beta.spacious <- fit.spacious$beta
@@ -97,8 +110,8 @@ cat("Spacious SEs:",fit.spacious$se.beta,fit.spacious$se.theta,"\n")
 cat("Spacious execution time:\n")
 print(time.spacious)
 
-#preds <- predict(fit.spacious, newdata=data.frame(x2=x1[(n+1):(n+np)]), newS=S[(n+1):(n+np),], interval="prediction", level=0.9)
-preds <- predict(fit.spacious, newS=S[(n+1):(n+np),], interval="prediction", level=0.9)
+preds <- predict(fit.spacious, newdata=data.frame(x2=x1[(n+1):(n+np)]), newS=S[(n+1):(n+np),], interval="prediction", level=0.9)
+#preds <- predict(fit.spacious, newS=S[(n+1):(n+np),], interval="prediction", level=0.9)
 #preds <- predict(fit.spacious, newdata=X.pred, newS=S.pred, interval="prediction", level=0.9)
 cat("Predictions:\n")
 print(preds)
