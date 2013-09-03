@@ -12,7 +12,9 @@ library(spacious)
 data(anom.2011)
 
 library(ggmap)
-euro <- get_map(location=c(mean(anom.2011$lon),mean(anom.2011$lat)), zoom=4, maptype="satellite")
+if (!("euro" %in% search())) {
+	euro <- get_map(location=c(mean(anom.2011$lon),mean(anom.2011$lat)), zoom=4, maptype="satellite")
+}
 
 S <- cbind(anom.2011$lon, anom.2011$lat)
 
@@ -51,19 +53,19 @@ print(summary(fit))
 if (TRUE) {
 # blocking structures
 library(maps)
-#fit_c <- spacious(anom ~ lon + lat + elev, S=S, data=anom.2011, blocks=list(type="cluster"))
-#fit_r <- spacious(anom ~ lon + lat + elev, S=S, data=anom.2011, blocks=list(type="regular"))
+#fit_c <- spacious(anom ~ lon + lat + elev, S=S, data=anom.2011, blocks=list(type="cluster"), gpu=TRUE)
+#fit_r <- spacious(anom ~ lon + lat + elev, S=S, data=anom.2011, blocks=list(type="regular"), gpu=TRUE)
 
-pdf("pdf/manual_blocks_c.pdf")
-	plot(S, pch=4, xlab="lon", ylab="lat", main="Cluster blocks", cex=0.5)
+pdf("pdf/manual_blocks_c.pdf") #, height=7/1.5, width=7/1.5)
+	plot(S, pch=4, xlab="lon", ylab="lat", main="Cluster blocks", cex=0.1)
 	map("world", add=TRUE, col="darkgreen")
-	plot(fit_c$grid,lty=1,lwd=1.5,border="gray",cex=0.25,add=TRUE)
+	plot(fit_c$grid,lty=1,lwd=4,border="blue",cex=0.25,add=TRUE)
 graphics.off()
 
-pdf("pdf/manual_blocks_r.pdf")
-	plot(S, pch=4, xlab="lon", ylab="lat", main="Regular blocks", cex=0.5)
+pdf("pdf/manual_blocks_r.pdf") #, height=7/1.5, width=7/1.5)
+	plot(S, pch=4, xlab="lon", ylab="lat", main="Regular blocks", cex=0.1)
 	map("world", add=TRUE, col="darkgreen")
-	plot(fit_r$grid,lty=1,lwd=1.5,border="gray",cex=0.25,add=TRUE)
+	plot(fit_r$grid,lty=1,lwd=4,border="blue",cex=0.25,add=TRUE)
 graphics.off()
 }
 
