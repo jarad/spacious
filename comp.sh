@@ -11,8 +11,11 @@ FLAGS="-DDEBUG -DCLINE -DPTHREAD -DCUDA -Wall -ggdb -O3 -m64"
 #g++ -DCLINE -Wall -I/usr/local/lib64/R/include -L/usr/local/lib64/R/lib -c src/BlockComp.cpp
 #g++ -DCLINE -Wall -I/usr/local/lib64/R/include -L/usr/local/lib64/R/lib -c src/covs.cpp
 
-echo "g++ $FLAGS $INC -o block_test src/BlockComp.cpp src/covs.cpp src/utils.cpp src/utils_cuda.cpp $LIB"
-g++ $FLAGS $INC -o block_test src/BlockComp.cpp src/covs.cpp src/utils.cpp src/utils_cuda.cpp $LIB
+#echo "nvcc -c -o utils_cuda.o src/utils_cuda.cu"
+#nvcc -c -o utils_cuda.o src/utils_cuda.cu
+
+echo "g++ $FLAGS $INC -o block_test src/BlockComp.cpp src/covs.cpp src/utils.cpp src/utils_cuda.cpp utils_cuda.o $LIB"
+g++ $FLAGS $INC -o block_test src/BlockComp.cpp src/covs.cpp src/utils.cpp src/utils_cuda.cpp utils_cuda.o $LIB
 
 #echo "nvcc -Xcompiler $FLAGS $INC -Xlinker $LIB -o block_test src/BlockComp.cpp src/covs.cpp src/utils.cpp src/utils_cuda.cpp"
 #nvcc -Xcompiler $FLAGS $INC -Xlinker $LIB src/BlockComp.cpp src/covs.cpp src/utils.cpp src/utils_cuda.cpp -o blocktest

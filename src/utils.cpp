@@ -5,7 +5,7 @@
 
 // chol2inv: compute inverse of n by n pd symm mat A using Cholesky
 // assumes A is stored in non-packed upper triangular format
-int chol2inv(int n, double *A) {
+int chol2inv(int n, double *A, bool do_log_det, double *log_det) {
 	char uplo = 'U';
 	int  info;
 
@@ -14,6 +14,16 @@ int chol2inv(int n, double *A) {
 	if (info) {
 //		MSG("Error with chol(A): info = %d\n", info);
 		return(info);
+	}
+
+	if (do_log_det) {
+		// fill in log determinant
+		*log_det = 0;
+
+		for (int i = 0; i < n; i++)
+			*log_det += log(A[i + i*n]);
+
+		*log_det *= 2;
 	}
 
 	// complete inverse

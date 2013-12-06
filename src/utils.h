@@ -57,7 +57,7 @@ inline int imin(int a, int b) {
 }
 
 // function definitions
-int chol2inv(int n, double *A);
+int chol2inv(int n, double *A, bool do_log_det=false, double *log_det=NULL);
 void disp_sym(double *mat, int lo, int hi);
 void disp_usym(double *mat, int lo, int hi, int n);
 

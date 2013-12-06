@@ -75,7 +75,7 @@ void BlockComp::init(int nthreads, bool gpu) {
 
 	// default control params
 	mIterTol = 1e-3;
-	mMaxIter = 100;
+	mMaxIter = 20;
 
 #ifdef CUDA
 	if (mGPU) {
@@ -106,6 +106,9 @@ void BlockComp::initPointers() {
 	mBeta       = NULL;
 	mTheta      = NULL;
 	mThetaT     = NULL;
+	mIterBeta   = NULL;
+	mIterTheta  = NULL;
+	mIterLogLik = NULL;
 
 	mFitted     = NULL;
 	mResids     = NULL;
@@ -173,6 +176,9 @@ void BlockComp::cleanup() {
 	free(mBeta);
 	free(mTheta);
 	free(mThetaT);
+	free(mIterBeta);
+	free(mIterTheta);
+	free(mIterLogLik);
 
 	free(mFitted);
 	free(mResids);
@@ -499,10 +505,46 @@ void BlockComp::setFixed(bool *fixed, double *values) {
 	}
 }
 
+// compute log-likelihood
+bool BlockComp::computeLogLik(double *log_lik) {
+	int i;
+	double log_det;
+	double q[mMaxPair];
+
+	char   cN = 'N';
+	double p1 = 1.0;
+	int    i1 = 1;
+
+	// initialization
+	log_det = 0;
+	*log_lik = 0;
+	for (i = 0; i < mN; i++) q[i] = 0;
+
+	if (mLikForm == Block) {
+	} else if (mLikForm == Full) {
+		invertFullCov(true, &log_det);
+
+		// add determinant piece to log-likelihood
+		*log_lik += mN*log_det;
+
+		computeResiduals();
+
+		// compute q = inv(Sigma) x resids
+		dgemv_(&cN, &mN, &mN, &p1, mSigma[0], &mN, mResids, &i1, &p1, q, &i1);
+
+		// add in resids x inv(Sigma) x resids piece to log-likelihood
+		for (i = 0; i < mN; i++)
+			*log_lik += mResids[i] * q[i];
+
+		*log_lik /= -2;
+	}
+
+	return(true);
+}
+
 // fit model to data
 bool BlockComp::fit(bool verbose) {
 	int i;
-	bool largeDiff;
 
 #ifdef DEBUG
 	MSG("Starting fit() (# of threads=%d, use gpu=%d)...\n", mNthreads, mGPU);
@@ -557,6 +599,14 @@ bool BlockComp::fit(bool verbose) {
 	for (i = 0; i < mNtheta; i++) {
 		mTheta_W[i] = (double *)malloc(sizeof(double)*mMaxPair*mMaxPair);
 	}
+
+	// prepare where to save at each iteration
+	free(mIterBeta);
+	free(mIterTheta);
+	free(mIterLogLik);
+	mIterBeta   = (double *)malloc(sizeof(double)*mNbeta*(mMaxIter+1));
+	mIterTheta  = (double *)malloc(sizeof(double)*mNtheta*(mMaxIter+1));
+	mIterLogLik = (double *)malloc(sizeof(double)*(mMaxIter+1));
 
 #ifdef PTHREAD
 	free(mThreads);
@@ -637,42 +687,53 @@ bool BlockComp::fit(bool verbose) {
 
 #endif
 
+	if (mLikForm == Full) {
+		// invert full covariance once to start
+		if (!invertFullCov()) {
+			MSG("Unable to invert full covariance using initial values.\n");
+			return(false);
+		}
+	}
+
 	// get initial beta
 	if (!updateBeta()) {
 		MSG("Unable to get initial values for beta\n");
 		return(false);
 	}
 
-	// vectors to hold previous parameter values
-	double *prevBeta   = (double *)malloc(sizeof(double)*mNbeta);
-	double *prevThetaT = (double *)malloc(sizeof(double)*mNtheta);
+	double log_lik;
+	computeLogLik(&log_lik);
+	MSG("Log-likelihood: %.2f\n", log_lik);
 
-#ifdef DEBUG
-		MSG("TODO: use log lik to detect for convergence!\n");
-#endif
+	// save initial values
+	for (i = 0; i < mNbeta; i++)  { mIterBeta[i]   = mBeta[i];  }
+	for (i = 0; i < mNtheta; i++) { mIterTheta[i]  = mTheta[i]; }
+	mIterLogLik[0] = log_lik;
 
 	for (mIters = 0; mIters < mMaxIter; mIters++) {
-		// store previous values
-		for (i = 0; i < mNbeta; i++)  { prevBeta[i]   = mBeta[i]; }
-		for (i = 0; i < mNtheta; i++) { prevThetaT[i] = mThetaT[i]; }
-
 		// update covariance params
 		if (!updateTheta()) {
 			MSG("Unable to update theta at iteration %d\n", mIters+1);
-			free(prevBeta); free(prevThetaT);
 			return(false);
 		}
 
 		// update mean params
 		if (!updateBeta()) {
 			MSG("Unable to update beta at iteration %d\n", mIters+1);
-			free(prevBeta); free(prevThetaT);
 			return(false);
 		}
 
+		// compute log-likelihood for updated params
+		computeLogLik(&log_lik);
+
+		// save values at this iteration
+		for (i = 0; i < mNbeta; i++)  { mIterBeta[i + mNbeta*(mIters+1)]  = mBeta[i];  }
+		for (i = 0; i < mNtheta; i++) { mIterTheta[i + mNbeta*(mIters+1)] = mTheta[i]; }
+		mIterLogLik[mIters+1] = log_lik;
+
 		if (verbose) {
 			// display iteration information
-			MSG("iter=%d: ", mIters+1);
+			MSG("iter=%d: ll: %.2f; ", mIters+1, log_lik);
 			MSG("beta: ");
 			for (i = 0; i < mNbeta; i++) { MSG("%.2f ", mBeta[i]); }
 			MSG("; theta: ");
@@ -680,28 +741,8 @@ bool BlockComp::fit(bool verbose) {
 			MSG("\n");
 		}
 
-		// detect convergence
-		largeDiff = false;
-
-		// check betas for convergence
-		for (i = 0; i < mNbeta; i++) {
-			if (fabs(mBeta[i]-prevBeta[i])/fabs(prevBeta[i]) > mIterTol) {
-				largeDiff = true;
-				break;
-			}
-		}
-
-		if (!largeDiff) {
-			// check thetas for convergence
-			for (i = 0; i < mNtheta; i++) {
-				if (fabs(mThetaT[i]-prevThetaT[i])/fabs(prevThetaT[i]) > mIterTol) {
-					largeDiff = true;
-					break;
-				}
-			}
-		}
-
-		if (!largeDiff) {
+		// check log-likelihood for convergence
+		if (fabs(mIterLogLik[mIters+1] - mIterLogLik[mIters])/fabs(0.1 + mIterLogLik[mIters+1]) <= mIterTol) {
 			// convergence!
 			if (verbose) {
 				MSG("Converged at iteration %d\n", mIters+1);
@@ -715,12 +756,56 @@ bool BlockComp::fit(bool verbose) {
 
 	}
 
-	// clean up
-	free(prevBeta);
-	free(prevThetaT);
-
 	// we have a fit!
 	mHasFit = true;
+
+	return(true);
+}
+
+// invert full covariance matrix
+bool BlockComp::invertFullCov(bool do_log_det, double *log_det) {
+	int i,j;
+
+	// fill in covariance matrix
+	mCov->compute(mSigma[0], mTheta, mN, mWithinD[0]);
+
+#ifdef CUDA
+	if (!mGPU) {  // compiled with cuda, but don't use GPU...
+#endif
+		if (chol2inv(mN, mSigma[0], do_log_det, log_det)) {
+			MSG("invertFullCov(): unable to invert Sigma\n");
+			return(false);
+		}
+#ifdef CUDA
+	} else {
+		// use GPU
+
+		// copy host Sigma to device
+		if (cudaMemcpy(mDevSigma, mSigma[0], mN*mN*sizeof(double), cudaMemcpyHostToDevice) != cudaSuccess) {
+			MSG("invertFullCov(): unable to copy Sigma to device: %s\n", cudaGetErrorString(cudaGetLastError()));
+			return(false);
+		}
+
+		// invert Sigma with GPU
+		if (cuda_chol2inv(mCublasHandle, mN, mDevSigma, do_log_det, log_det)) {
+			MSG("invertFullCov(): unable to invert Sigma\n");
+			return(false);
+		}
+
+		// copy device Sigma to host
+		if (cudaMemcpy(mSigma[0], mDevSigma, mN*mN*sizeof(double), cudaMemcpyDeviceToHost) != cudaSuccess) {
+			MSG("invertFullCov(): unable to copy Sigma to host: %s\n", cudaGetErrorString(cudaGetLastError()));
+			return(false);
+		}
+	}
+#endif
+
+	// fill in lower triangle of Sigma
+	for (i = 0; i < mN; i++) {
+		for (j = i+1; j < mN; j++) {
+			mSigma[0][lsymi(i,j,mN)] = mSigma[0][usymi(i,j,mN)];
+		}
+	}
 
 	return(true);
 }
@@ -806,56 +891,7 @@ bool BlockComp::updateBeta() {
 	} else if (mLikForm == Full) {
 		// update beta using full likelihood
 
-		if (!mConsMem) {
-			// fill in covariance matrix
-			mCov->compute(mSigma[0], mTheta, mN, mWithinD[0]);
-		} else {
-			// we're conserving memory
-
-			// fill in distance
-			// fill in covariance
-			MSG("TODO: updateBeta(): mConsMem=true, mLikForm=Full\n");
-			return(false);
-		}
-
-		// invert Sigma
-#ifdef CUDA
-		if (!mGPU) {  // compiled with cuda, but don't use GPU...
-#endif
-			if (chol2inv(mN, mSigma[0])) {
-				MSG("updateBeta(): unable to invert Sigma\n");
-				return(false);
-			}
-#ifdef CUDA
-		} else {
-			// use GPU
-
-			// copy host Sigma to device
-			if (cudaMemcpy(mDevSigma, mSigma[0], mN*mN*sizeof(double), cudaMemcpyHostToDevice) != cudaSuccess) {
-				MSG("updateBeta(): unable to copy Sigma to device: %s\n", cudaGetErrorString(cudaGetLastError()));
-				return(false);
-			}
-
-			// invert Sigma with GPU
-			if (cuda_chol2inv(mCublasHandle, mN, mDevSigma)) {
-				MSG("updateBeta(): unable to invert Sigma\n");
-				return(false);
-			}
-
-			// copy device Sigma to host
-			if (cudaMemcpy(mSigma[0], mDevSigma, mN*mN*sizeof(double), cudaMemcpyDeviceToHost) != cudaSuccess) {
-				MSG("updateBeta(): unable to copy Sigma to host: %s\n", cudaGetErrorString(cudaGetLastError()));
-				return(false);
-			}
-		}
-#endif
-
-		// fill in lower triangle of Sigma
-		for (i = 0; i < mN; i++) {
-			for (j = i+1; j < mN; j++) {
-				mSigma[0][lsymi(i,j,mN)] = mSigma[0][usymi(i,j,mN)];
-			}
-		}
+		// note that computeLogLik() already computes inv(Sigma) used here
 
 		// compute A = X'inv(Sigma)X and b = X'inv(Sigma)y
 #ifdef CUDA
@@ -1217,7 +1253,7 @@ bool BlockComp::updateTheta() {
 	} else if (mLikForm == Full) {
 		// update theta using full likelihood
 
-		// note that updateBeta() already computes inv(Sigma) used here
+		// note that logLik() already computes inv(Sigma) used here
 		for (i = 0; i < mN; i++) {
 			resids[i] = mY[i];
 			q[i]      = 0;
@@ -1228,15 +1264,13 @@ bool BlockComp::updateTheta() {
 #endif
 			char   cN = 'N';
 			double p1 = 1.0;
-			double n1 = -1.0;
 			double z = 0;
 			int    i1 = 1;
 
-			// compute resids = y - Xb
-			dgemv_(&cN, &mN, &mNbeta, &n1, mX, &mN, mBeta, &i1, &p1, resids, &i1);
+			computeResiduals();
 
 			// compute q = inv(Sigma) x resids
-			dgemv_(&cN, &mN, &mN, &p1, mSigma[0], &mN, resids, &i1, &p1, q, &i1);
+			dgemv_(&cN, &mN, &mN, &p1, mSigma[0], &mN, mResids, &i1, &p1, q, &i1);
 
 			// fill in W and u
 			// possible parallel: each of these is independent
@@ -2262,11 +2296,12 @@ void BlockComp::getTheta(double *theta) {
 
 #include "test_data.h"
 
-void test_bc(int nthreads, bool gpu) {
+void test_bc(BlockComp::LikForm lf, int nthreads, bool gpu) {
 	BlockComp blk(nthreads, gpu);
 
-	blk.setLikForm(BlockComp::Block);
+	//blk.setLikForm(BlockComp::Block);
 	//blk.setLikForm(BlockComp::Full);
+	blk.setLikForm(lf);
 	blk.setCovType(BlockComp::Exp);
 
 	if (!blk.setData(test_n, test_y, test_S, test_nblocks, test_B, test_p, test_X, test_npairs, test_neighbors)) {
@@ -2325,10 +2360,10 @@ int main(void) {
 	test_bc(4, false);
 	MSG("--> Done (%.2fsec)\n", (double)(clock() - t1)/CLOCKS_PER_SEC);
 	MSG("=========================================================================\n");
-*/
 	MSG("CPU\n");
+*/
 	t1 = clock();
-	test_bc(1, false);
+	test_bc(BlockComp::Full, 4, false);
 	MSG("--> Done (%.2fsec)\n", (double)(clock() - t1)/CLOCKS_PER_SEC);
 
 	return(0);

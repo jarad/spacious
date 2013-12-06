@@ -29,13 +29,22 @@ void cuda_devices() {
 
 // cuda_chol2inv: compute inverse of n by n pd symm mat A using Cholesky
 // Note: A must be allocated on device
-int cuda_chol2inv(cublasHandle_t handle, int n, double *A) {
+int cuda_chol2inv(cublasHandle_t handle, int n, double *A, bool do_log_det, double *log_det) {
 	int  info;
 
 	// compute factorization
 	cuda_dpotrf(handle, n, A, &info);
 	if (info) {
 		return(info);
+	}
+
+	if (do_log_det) {
+		// fill in log determinant
+		*log_det = 0;
+
+		//for (int i = 0; i < n; i++) *log_det += log(A[i + i*n]);
+
+		*log_det *= 2;
 	}
 
 	// complete inverse

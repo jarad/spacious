@@ -60,13 +60,14 @@ private:
 
 	void setThreads(int nthreads);
 
-	double computeLogLik(double *beta, double *theta);
+	bool computeLogLik(double *log_lik);
 	void computeFitted();
 	void computeFitted(int n, double *fitted, double *X);
 	void computeResiduals();
 	void computeStdErrs();
 	void computeCLIC();
 
+	bool invertFullCov(bool do_log_det=false, double *log_det=NULL);
 	bool updateBeta();
 	bool updateBetaPair(int pair, double *Sigma, double *A, double *b);
 	bool updateTheta();
@@ -116,6 +117,9 @@ private:
 	double *mBeta;        // model parametes
 	double *mTheta;
 	double *mThetaT;      // transformed model parametes
+	double *mIterBeta;    // ... at each iteration
+	double *mIterTheta;
+	double *mIterLogLik;
 
 	double *mFitted;      // fitted values
 	double *mResids;      // residuals
