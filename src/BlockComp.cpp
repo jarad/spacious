@@ -74,7 +74,7 @@ void BlockComp::init(int nthreads, bool gpu) {
 	setCovType(Exp);
 
 	// default control params
-	mIterTol = 1e-3;
+	mIterTol = 1e-8;
 	mMaxIter = 20;
 
 #ifdef CUDA
@@ -525,7 +525,7 @@ bool BlockComp::computeLogLik(double *log_lik) {
 		invertFullCov(true, &log_det);
 
 		// add determinant piece to log-likelihood
-		*log_lik += mN*log_det;
+		*log_lik += log_det;
 
 		computeResiduals();
 
@@ -1253,7 +1253,7 @@ bool BlockComp::updateTheta() {
 	} else if (mLikForm == Full) {
 		// update theta using full likelihood
 
-		// note that logLik() already computes inv(Sigma) used here
+		// note that logLik() already computes inv(Sigma) and residuals used here
 		for (i = 0; i < mN; i++) {
 			resids[i] = mY[i];
 			q[i]      = 0;
@@ -1266,8 +1266,6 @@ bool BlockComp::updateTheta() {
 			double p1 = 1.0;
 			double z = 0;
 			int    i1 = 1;
-
-			computeResiduals();
 
 			// compute q = inv(Sigma) x resids
 			dgemv_(&cN, &mN, &mN, &p1, mSigma[0], &mN, mResids, &i1, &p1, q, &i1);
@@ -1332,6 +1330,12 @@ bool BlockComp::updateTheta() {
 			double *devq;
 			double *devP;
 			double *devW;
+
+			// copy host Sigma to device
+			if (cudaMemcpy(mDevSigma, mSigma[0], mN*mN*sizeof(double), cudaMemcpyHostToDevice) != cudaSuccess) {
+				MSG("updateTheta(): unable to copy Sigma to device: %s\n", cudaGetErrorString(cudaGetLastError()));
+				return(false);
+			}
 
 			// allocate space on device
 			if (cudaMalloc((void **)&devX, mN*mNbeta*sizeof(double)) != cudaSuccess) {
@@ -1733,9 +1737,7 @@ void *BlockComp::updateThetaThread(void *work) {
 
 void BlockComp::computeFitted() {
 	// computed fitted values to model data
-	if (mFitted != NULL) return;
-
-	mFitted = (double *)malloc(sizeof(double)*mN);
+	if (mFitted == NULL) mFitted = (double *)malloc(sizeof(double)*mN);
 
 	computeFitted(mN, mFitted, mX);
 }
@@ -1753,12 +1755,11 @@ void BlockComp::computeFitted(int n, double *fitted, double *X) {
 
 void BlockComp::computeResiduals() {
 	// compute residuals for model data
-	if (mResids != NULL) return;
+	if (mResids == NULL)
+		mResids = (double *)malloc(sizeof(double)*mN);
 
 	// make sure we have fitted values
 	computeFitted();
-
-	mResids = (double *)malloc(sizeof(double)*mN);
 
 	for (int i = 0; i < mN; i++) {
 		mResids[i] = mY[i]-mFitted[i];
@@ -1792,7 +1793,6 @@ bool BlockComp::predict(int n_0, double *y_0, const double *newS, const int *new
 	int i,j;
 
 	// computed fitted and residuals
-	computeFitted();
 	computeResiduals();
 
 	if (local) {
@@ -2362,6 +2362,15 @@ int main(void) {
 	MSG("=========================================================================\n");
 	MSG("CPU\n");
 */
+
+/*
+*/
+	MSG("GPU\n");
+	t1 = clock();
+	test_bc(BlockComp::Full, 4, true);
+	MSG("--> Done (%.2fsec)\n", (double)(clock() - t1)/CLOCKS_PER_SEC);
+
+	MSG("CPU\n");
 	t1 = clock();
 	test_bc(BlockComp::Full, 4, false);
 	MSG("--> Done (%.2fsec)\n", (double)(clock() - t1)/CLOCKS_PER_SEC);

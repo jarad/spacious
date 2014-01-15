@@ -42,9 +42,27 @@ int cuda_chol2inv(cublasHandle_t handle, int n, double *A, bool do_log_det, doub
 		// fill in log determinant
 		*log_det = 0;
 
-		//for (int i = 0; i < n; i++) *log_det += log(A[i + i*n]);
+		double *devV;
+		double *hostV = (double *)malloc(sizeof(double)*n);
+		if (cudaMalloc((void **) &devV, n*sizeof(double) ) != cudaSuccess) {
+			MSG("cuda_chol2inv(): unable to allocate space for V: %s\n", cudaGetErrorString(cudaGetLastError()));
+			return(-1);
+		}
 
+		// run kernel
+		cuda_log_det(devV, A, n);
+
+		if (cudaMemcpy(hostV, devV, n*sizeof(double), cudaMemcpyDeviceToHost) != cudaSuccess) {
+			MSG("cuda_chol2inv(): unable to copy V to host: %s\n", cudaGetErrorString(cudaGetLastError()));
+			return(-1);
+		}
+
+		// add in results
+		for (int i = 0; i < n; i++) *log_det += hostV[i];
 		*log_det *= 2;
+
+		cudaFree(devV);
+		free(hostV);
 	}
 
 	// complete inverse

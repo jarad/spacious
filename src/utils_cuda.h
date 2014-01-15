@@ -17,4 +17,8 @@ inline int cuda_block_size() {
 	return(CUDA_BS);
 }
 
+// kernels
+void cuda_log_det(double *v, double *A, int n);
+__global__ void cuda_log_det_k(double *v, double *A, int n);
+
 #endif
