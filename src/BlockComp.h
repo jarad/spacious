@@ -158,6 +158,7 @@ private:
 #ifdef CUDA
 	cublasHandle_t   mCublasHandle;
 	double          *mDevSigma;
+// other candidates: mDevX; mDevBeta; mDevResids; mDevq;
 #endif
 
 };

@@ -17,7 +17,7 @@ echo "nvcc -c -arch=sm_20 -I/usr/local/lib64/R/include -o utils_cuda_kernels.o s
 nvcc -c -arch=sm_20 -I/usr/local/lib64/R/include -o src/utils_cuda_kernels.o src/utils_cuda_kernels.cu
 
 echo "g++ $FLAGS $INC -o block_test src/BlockComp.cpp src/covs.cpp src/utils.cpp src/utils_cuda.cpp utils_cuda_kernels.o $LIB"
-g++ $FLAGS $INC -o block_test src/BlockComp.cpp src/covs.cpp src/utils.cpp src/utils_cuda.cpp utils_cuda_kernels.o $LIB
+g++ $FLAGS $INC -o block_test src/BlockComp.cpp src/covs.cpp src/utils.cpp src/utils_cuda.cpp src/utils_cuda_kernels.o $LIB
 
 #echo "nvcc -Xcompiler $FLAGS $INC -Xlinker $LIB -o block_test src/BlockComp.cpp src/covs.cpp src/utils.cpp src/utils_cuda.cpp"
 #nvcc -Xcompiler $FLAGS $INC -Xlinker $LIB src/BlockComp.cpp src/covs.cpp src/utils.cpp src/utils_cuda.cpp -o blocktest

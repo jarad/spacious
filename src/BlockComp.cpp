@@ -518,19 +518,123 @@ bool BlockComp::computeLogLik(double *log_lik) {
 	// initialization
 	log_det = 0;
 	*log_lik = 0;
-	for (i = 0; i < mN; i++) q[i] = 0;
 
 	if (mLikForm == Block) {
+		MSG("Block!\n");
+		return(false);
 	} else if (mLikForm == Full) {
-		invertFullCov(true, &log_det);
+		for (i = 0; i < mN; i++) q[i] = 0;
+
+		// invert covariance
+		if (!invertFullCov(true, &log_det)) return(false);
 
 		// add determinant piece to log-likelihood
 		*log_lik += log_det;
+#ifdef CUDA
+		if (!mGPU) {
+#endif
+			computeResiduals();
 
-		computeResiduals();
+			// compute q = inv(Sigma) x resids
+			dgemv_(&cN, &mN, &mN, &p1, mSigma[0], &mN, mResids, &i1, &p1, q, &i1);
+#ifdef CUDA
+		} else {
+#endif
+			// use GPU
+			double p1 = 1.0;
+			double n1 = -1.0;
+			int    i1 = 1;
+			cublasStatus_t status;
 
-		// compute q = inv(Sigma) x resids
-		dgemv_(&cN, &mN, &mN, &p1, mSigma[0], &mN, mResids, &i1, &p1, q, &i1);
+			double *devX;
+			double *devBeta;
+			double *devResids;
+			double *devq;
+
+			// copy host Sigma to device
+			if (cudaMemcpy(mDevSigma, mSigma[0], mN*mN*sizeof(double), cudaMemcpyHostToDevice) != cudaSuccess) {
+				MSG("computeLogLik(): unable to copy Sigma to device: %s\n", cudaGetErrorString(cudaGetLastError()));
+				return(false);
+			}
+
+			// allocate space on device
+			if (cudaMalloc((void **)&devX, mN*mNbeta*sizeof(double)) != cudaSuccess) {
+				MSG("computeLogLik(): unable to allocate space for X on device: %s\n", cudaGetErrorString(cudaGetLastError()));
+				return(false);
+			}
+
+			if (cudaMalloc((void **)&devBeta, mNbeta*sizeof(double)) != cudaSuccess) {
+				MSG("computeLogLik(): unable to allocate space for beta on device: %s\n", cudaGetErrorString(cudaGetLastError()));
+				return(false);
+			}
+
+			if (cudaMalloc((void **)&devResids, mN*sizeof(double)) != cudaSuccess) {
+				MSG("computeLogLik(): unable to allocate space for resids on device: %s\n", cudaGetErrorString(cudaGetLastError()));
+				return(false);
+			}
+
+			if (cudaMalloc((void **)&devq, mN*sizeof(double)) != cudaSuccess) {
+				MSG("computeLogLik(): unable to allocate space for q on device: %s\n", cudaGetErrorString(cudaGetLastError()));
+				return(false);
+			}
+
+			// copy host data to device
+			if (cudaMemcpy(devX, mX, mN*mNbeta*sizeof(double), cudaMemcpyHostToDevice) != cudaSuccess) {
+				MSG("computeLogLik(): unable to copy X to device: %s\n", cudaGetErrorString(cudaGetLastError()));
+				return(false);
+			}
+
+			if (cudaMemcpy(devBeta, mBeta, mNbeta*sizeof(double), cudaMemcpyHostToDevice) != cudaSuccess) {
+				MSG("computeLogLik(): unable to copy beta to device: %s\n", cudaGetErrorString(cudaGetLastError()));
+				return(false);
+			}
+
+			if (cudaMemcpy(devResids, mY, mN*sizeof(double), cudaMemcpyHostToDevice) != cudaSuccess) {
+				MSG("computeLogLik(): unable to copy resids to device: %s\n", cudaGetErrorString(cudaGetLastError()));
+				return(false);
+			}
+
+			if (cudaMemcpy(devq, q, mN*sizeof(double), cudaMemcpyHostToDevice) != cudaSuccess) {
+				MSG("computeLogLik(): unable to copy q to device: %s\n", cudaGetErrorString(cudaGetLastError()));
+				return(false);
+			}
+
+			// compute resids = y - Xb
+			status = cublasDgemv(mCublasHandle, CUBLAS_OP_N, mN, mNbeta,
+			                     &n1, devX, mN, devBeta, i1, &p1, devResids, i1);
+			if (status != CUBLAS_STATUS_SUCCESS) {
+				MSG("computeLogLik(): unable to call cublasDgemv(): %d\n", status);
+				return(false);
+			}
+
+			// compute q = inv(Sigma) x resids
+			status = cublasDgemv(mCublasHandle, CUBLAS_OP_N, mN, mN,
+			                     &p1, mDevSigma, mN, devResids, i1, &p1, devq, i1);
+			if (status != CUBLAS_STATUS_SUCCESS) {
+				MSG("computeLogLik(): unable to call cublasDgemv(): %d\n", status);
+				return(false);
+			}
+
+			// get back resids
+			if (cudaMemcpy(mResids, devResids, mN*sizeof(double), cudaMemcpyDeviceToHost) != cudaSuccess) {
+				MSG("computeLogLik(): unable to copy resids to host: %s\n", cudaGetErrorString(cudaGetLastError()));
+				return(false);
+			}
+
+			// get back q
+			if (cudaMemcpy(q, devq, mN*sizeof(double), cudaMemcpyDeviceToHost) != cudaSuccess) {
+				MSG("computeLogLik(): unable to copy q to host: %s\n", cudaGetErrorString(cudaGetLastError()));
+				return(false);
+			}
+
+			cudaFree(devX);
+			cudaFree(devBeta);
+			cudaFree(devResids);
+			cudaFree(devq);
+
+#ifdef CUDA
+		}
+#endif
 
 		// add in resids x inv(Sigma) x resids piece to log-likelihood
 		for (i = 0; i < mN; i++)
@@ -549,6 +653,12 @@ bool BlockComp::fit(bool verbose) {
 #ifdef DEBUG
 	MSG("Starting fit() (# of threads=%d, use gpu=%d)...\n", mNthreads, mGPU);
 #endif
+
+	// allocate space for residuals and fitted
+	free(mResids);
+	free(mFitted);
+	mResids = (double *)malloc(sizeof(double)*mN);
+	mFitted = (double *)malloc(sizeof(double)*mN);
 
 	// make sure we have initial values
 	if (mThetaInits == NULL) {
@@ -701,9 +811,9 @@ bool BlockComp::fit(bool verbose) {
 		return(false);
 	}
 
+	// compute log likelihood
 	double log_lik;
-	computeLogLik(&log_lik);
-	MSG("Log-likelihood: %.2f\n", log_lik);
+	if (!computeLogLik(&log_lik)) return(false);
 
 	// save initial values
 	for (i = 0; i < mNbeta; i++)  { mIterBeta[i]   = mBeta[i];  }
@@ -797,6 +907,7 @@ bool BlockComp::invertFullCov(bool do_log_det, double *log_det) {
 			MSG("invertFullCov(): unable to copy Sigma to host: %s\n", cudaGetErrorString(cudaGetLastError()));
 			return(false);
 		}
+
 	}
 #endif
 
@@ -1254,10 +1365,7 @@ bool BlockComp::updateTheta() {
 		// update theta using full likelihood
 
 		// note that logLik() already computes inv(Sigma) and residuals used here
-		for (i = 0; i < mN; i++) {
-			resids[i] = mY[i];
-			q[i]      = 0;
-		}
+		for (i = 0; i < mN; i++) q[i] = 0;
 
 #ifdef CUDA
 		if (!mGPU) {
@@ -1344,7 +1452,7 @@ bool BlockComp::updateTheta() {
 			}
 
 			if (cudaMalloc((void **)&devBeta, mNbeta*sizeof(double)) != cudaSuccess) {
-				MSG("updateTheta(): unable to allocate space for resids on device: %s\n", cudaGetErrorString(cudaGetLastError()));
+				MSG("updateTheta(): unable to allocate space for beta on device: %s\n", cudaGetErrorString(cudaGetLastError()));
 				return(false);
 			}
 
@@ -1379,7 +1487,7 @@ bool BlockComp::updateTheta() {
 				return(false);
 			}
 
-			if (cudaMemcpy(devResids, resids, mN*sizeof(double), cudaMemcpyHostToDevice) != cudaSuccess) {
+			if (cudaMemcpy(devResids, mY, mN*sizeof(double), cudaMemcpyHostToDevice) != cudaSuccess) {
 				MSG("updateTheta(): unable to copy resids to device: %s\n", cudaGetErrorString(cudaGetLastError()));
 				return(false);
 			}
@@ -1484,9 +1592,6 @@ bool BlockComp::updateTheta() {
 			cudaFree(devP);
 			cudaFree(devW);
 
-#endif
-
-#ifdef CUDA
 		}
 #endif
 
@@ -1737,7 +1842,6 @@ void *BlockComp::updateThetaThread(void *work) {
 
 void BlockComp::computeFitted() {
 	// computed fitted values to model data
-	if (mFitted == NULL) mFitted = (double *)malloc(sizeof(double)*mN);
 
 	computeFitted(mN, mFitted, mX);
 }
@@ -1755,8 +1859,6 @@ void BlockComp::computeFitted(int n, double *fitted, double *X) {
 
 void BlockComp::computeResiduals() {
 	// compute residuals for model data
-	if (mResids == NULL)
-		mResids = (double *)malloc(sizeof(double)*mN);
 
 	// make sure we have fitted values
 	computeFitted();
@@ -2365,15 +2467,22 @@ int main(void) {
 
 /*
 */
-	MSG("GPU\n");
+	MSG("GPU full\n");
 	t1 = clock();
 	test_bc(BlockComp::Full, 4, true);
 	MSG("--> Done (%.2fsec)\n", (double)(clock() - t1)/CLOCKS_PER_SEC);
 
-	MSG("CPU\n");
+	MSG("CPU full\n");
 	t1 = clock();
 	test_bc(BlockComp::Full, 4, false);
 	MSG("--> Done (%.2fsec)\n", (double)(clock() - t1)/CLOCKS_PER_SEC);
+
+/*
+	MSG("CPU blocks\n");
+	t1 = clock();
+	test_bc(BlockComp::Block, 4, false);
+	MSG("--> Done (%.2fsec)\n", (double)(clock() - t1)/CLOCKS_PER_SEC);
+*/
 
 	return(0);
 }
