@@ -7,6 +7,7 @@
 #ifdef PTHREAD
 typedef struct {
 	int              id;
+	double           log_lik;
 	class BlockComp *bc;
 } pair_update_t;
 #endif
@@ -61,8 +62,11 @@ private:
 	void setThreads(int nthreads);
 
 	bool computeLogLik(double *log_lik);
+	bool computeLogLikPair(double *log_lik, int pair, double *Sigma, double *resids, double *q);
+
 	void computeFitted();
 	void computeFitted(int n, double *fitted, double *X);
+
 	void computeResiduals();
 	void computeStdErrs();
 	void computeCLIC();
@@ -136,6 +140,7 @@ private:
 #ifdef PTHREAD
 	static void *updateBetaThread(void *work);
 	static void *updateThetaThread(void *work);
+	static void *computeLogLikThread(void *work);
 
 	// variables for threading
 	pthread_t      *mThreads;

@@ -54,6 +54,8 @@ BlockComp::~BlockComp() {
 void BlockComp::init(int nthreads, bool gpu) {
 	initPointers();
 
+	if (nthreads < 1) nthreads = 1;   // make sure we have a least one thread
+
 	setThreads(nthreads);
 
 	// only initalize these pointers to start
@@ -520,8 +522,67 @@ bool BlockComp::computeLogLik(double *log_lik) {
 	*log_lik = 0;
 
 	if (mLikForm == Block) {
-		MSG("Block!\n");
-		return(false);
+		int pair;
+		double resids[mMaxPair];
+
+#ifdef PTHREAD
+		if (mNthreads <= 1) {
+#endif
+			// process each block pair in order
+			for (pair = 0; pair < mNpairs; pair++) {
+				if (!computeLogLikPair(log_lik, pair, mSigma[0], resids, q)) {
+						// error updating this pair
+						MSG("Unable to compute log-likelihood for pair %d\n", pair);
+						return(false);
+				}
+			}
+
+#ifdef PTHREAD
+		} else {
+			// use threads to process each block pair
+
+			// setup mutex
+			pthread_mutex_init(&mPairMutex, NULL);
+			mPair_t    = 0;
+
+			// create threads
+			for (i = 0; i < mNthreads; i++) {
+				mThreadStatus[i]        = true;
+				mThreadWork[i]->id      = i;
+				mThreadWork[i]->log_lik = 0;
+				mThreadWork[i]->bc      = this;
+
+				pthread_create(&mThreads[i], NULL,
+					&BlockComp::computeLogLikThread,
+					(void *)mThreadWork[i]
+				);
+
+			}
+
+			// wait for all threads to complete
+			for (i = 0; i < mNthreads; i++) {
+				pthread_join(mThreads[i], 0);
+			}
+
+			// destroy mutex
+			pthread_mutex_destroy(&mPairMutex);
+
+			// did we have any errors?
+			for (i = 0; i < mNthreads; i++) {
+				if (!mThreadStatus[i]) {
+					MSG("computeLogLik(): Error processing thread %d.\n", i);
+					return(false);
+				}
+			}
+
+			// combine results from each thread
+			for (i = 0; i < mNthreads; i++) {
+				*log_lik += mThreadWork[i]->log_lik;
+			}
+		}
+#endif
+
+		*log_lik /= -2;
 	} else if (mLikForm == Full) {
 		for (i = 0; i < mN; i++) q[i] = 0;
 
@@ -645,6 +706,116 @@ bool BlockComp::computeLogLik(double *log_lik) {
 
 	return(true);
 }
+
+bool BlockComp::computeLogLikPair(double *log_lik, int pair, double *Sigma, double *resids, double *q) {
+	int blk1 = mNeighbors[pair];
+	int blk2 = mNeighbors[pair+mNpairs];
+	int N_in_pair = mNB[blk1] + mNB[blk2];
+
+	int i,j;
+	int c;
+
+	if (!mConsMem) {
+		// fill in covariance matrix between these two blocks
+		mCov->compute(Sigma, mTheta, mNB[blk1], mWithinD[blk1], mNB[blk2], mWithinD[blk2], mBetweenD[pair]);
+	} else {
+		// we're conserving memory
+
+		// fill in distance
+		// fill in covariance
+		MSG("TODO: computeLogLikPair(): mConsMem=true, mLikForm=Block\n");
+		return(false);
+	}
+
+	// invert Sigma
+	if (chol2inv(N_in_pair, Sigma)) {
+		MSG("computeLogLikPair(): Unable to invert Sigma\n");
+		return(false);
+	}
+
+	// fill in lower triangle
+	for (i = 0; i < N_in_pair; i++) {
+		for (j = 0; j < N_in_pair; j++) {
+			Sigma[lsymi(i,j,N_in_pair)] = Sigma[usymi(i,j,N_in_pair)];
+		}
+	}
+
+	// initialize residuals and q
+	for (i = 0; i < N_in_pair; i++) {
+		resids[i] = 0;
+		q[i]      = 0;
+	}
+
+	// compute resids = y - X'b
+	for (i = 0; i < mNB[blk1]; i++) {   // block 1
+		c = mWhichB[blk1][i];
+
+		for (j = 0; j < mNbeta; j++) {
+			resids[i] += mX[c + j*mN] * mBeta[j];
+		}
+
+		resids[i] = mY[c] - resids[i];
+	}
+
+	for (i = 0; i < mNB[blk2]; i++) {   // block 2
+		c = mWhichB[blk2][i];
+
+		for (j = 0; j < mNbeta; j++) {
+			resids[i+mNB[blk1]] += mX[c + j*mN] * mBeta[j];
+		}
+
+		resids[i+mNB[blk1]] = mY[c] - resids[i+mNB[blk1]];
+	}
+
+	char   cN = 'N';
+	double p1 = 1.0;
+	double z = 0;
+	int    i1 = 1;
+
+	// compute q = inv(Sigma) x resids
+	dgemv_(&cN, &N_in_pair, &N_in_pair, &p1, Sigma, &N_in_pair, resids, &i1, &z, q, &i1);
+
+	// add in resids x inv(Sigma) x resids piece to log-likelihood
+	for (i = 0; i < N_in_pair; i++)
+		*log_lik += resids[i] * q[i];
+
+	return(true);
+}
+
+#ifdef PTHREAD
+void *BlockComp::computeLogLikThread(void *work) {
+	pair_update_t *w = (pair_update_t *)work;
+	int            id = w->id;
+	BlockComp     *bc = w->bc;
+
+	int pair;
+	double resids[bc->mMaxPair];
+	double q[bc->mMaxPair];
+
+	// process blocks
+	while (1) {
+		// get pair to process
+		pthread_mutex_lock(&(bc->mPairMutex));
+		pair = bc->mPair_t++;
+		pthread_mutex_unlock(&(bc->mPairMutex));
+
+		if (pair >= bc->mNpairs) {
+			// no more to process
+			break;
+		}
+
+		if (!bc->computeLogLikPair(&w->log_lik, pair, bc->mSigma[id], resids, q)) {
+			// error updating this pair
+			bc->mThreadStatus[id] = false;
+			return(NULL);
+		}
+	}
+
+	bc->mThreadStatus[id] = true;
+	return(NULL);
+}
+#endif
+
 
 // fit model to data
 bool BlockComp::fit(bool verbose) {
@@ -943,6 +1114,7 @@ bool BlockComp::updateBeta() {
 			for (pair = 0; pair < mNpairs; pair++) {
 				if (!updateBetaPair(pair, mSigma[0], mBeta_A, mBeta_b)) {
 					// error updating this pair
+					MSG("Unable to update beta for pair %d\n", pair);
 					return(false);
 				}
 			}
@@ -1304,6 +1476,7 @@ bool BlockComp::updateTheta() {
 			for (pair = 0; pair < mNpairs; pair++) {
 				if (!updateThetaPair(pair, mSigma[0], mTheta_W, mTheta_H, mTheta_P, resids, q, u)) {
 						// error updating this pair
+						MSG("Unable to update theta for pair %d\n", pair);
 						return(false);
 				}
 			}
@@ -2422,6 +2595,7 @@ void test_bc(BlockComp::LikForm lf, int nthreads, bool gpu) {
 
 	if (!blk.fit(true)) {
 		MSG("Error with fit.\n");
+		return;
 	}
 
 	//double newS[] = { 0.75, 0.80 };
@@ -2466,7 +2640,6 @@ int main(void) {
 */
 
 /*
-*/
 	MSG("GPU full\n");
 	t1 = clock();
 	test_bc(BlockComp::Full, 4, true);
@@ -2476,12 +2649,18 @@ int main(void) {
 	t1 = clock();
 	test_bc(BlockComp::Full, 4, false);
 	MSG("--> Done (%.2fsec)\n", (double)(clock() - t1)/CLOCKS_PER_SEC);
+*/
 
-/*
-	MSG("CPU blocks\n");
+	MSG("CPU blocks, no threads\n");
+	t1 = clock();
+	test_bc(BlockComp::Block, 1, false);
+	MSG("--> Done (%.2fsec)\n", (double)(clock() - t1)/CLOCKS_PER_SEC);
+
+	MSG("CPU blocks, 4 threads\n");
 	t1 = clock();
 	test_bc(BlockComp::Block, 4, false);
 	MSG("--> Done (%.2fsec)\n", (double)(clock() - t1)/CLOCKS_PER_SEC);
+/*
 */
 
 	return(0);
