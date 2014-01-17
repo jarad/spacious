@@ -2072,6 +2072,8 @@ bool BlockComp::predict(int n_0, double *y_0, const double *newS, const int *new
 
 	if (local) {
 		// predict with local kriging
+		MSG("TODO: predict(): implement local kriging\n");
+		return(false);
 	} else if (mLikForm == Block) {
 		// predict with block composite likelihood
 
@@ -2177,19 +2179,26 @@ bool BlockComp::predict(int n_0, double *y_0, const double *newS, const int *new
 			return(false);
 		}
 
+		// fill in lower tringular piece after inversion
+		for (i = 0; i < mN; i++) {
+			for (j = i+1; j < mN; j++) {
+				mSigma[0][lsymi(i,j,mN)] = mSigma[0][usymi(i,j,mN)];
+			}
+		}
+
 		char   cN = 'N';
 		double p1 = 1.0;
 		double z  = 0.0;
 		int    i1 = 1;
 		double corrvec[mN];
 
-		// compute new y = Xb
+		// compute new y_0 = Xb
 		dgemv_(&cN, &n_0, &mNbeta, &p1, newX, &n_0, mBeta, &i1, &z, y_0, &i1);
 
 		// compute inv(Sigma) x resids
 		dgemv_(&cN, &mN, &mN, &p1, mSigma[0], &mN, mResids, &i1, &z, corrvec, &i1);
 
-		// compute y_0 = Xb + Sigma[new,fit] inv(Sigma[fit,fit]) resids
+		// finish y_0 = Xb + Sigma[new,fit] inv(Sigma[fit,fit]) resids
 		double covBetween[n_0*mN];
 		for (j = 0; j < mN; j++) {
 			for (i = 0; i < n_0; i++) {
@@ -2211,7 +2220,7 @@ bool BlockComp::predict(int n_0, double *y_0, const double *newS, const int *new
 			// invert the new data block of inv(combSigma)
 			for (i = 0; i < n_0; i++) {
 				for (j = i; j < n_0; j++) {
-					mSigma[0][usymi(i,j,n_0)] = combSigma[usymi(mN+i,mN+j,combN)];
+					mSigma[0][usymi(i,j,n_0)] = combSigma[usymi(i+mN,j+mN,combN)];
 				}
 			}
 
@@ -2519,6 +2528,7 @@ bool BlockComp::blockPredict(int block, int n_0, double *y_0,
 */
 		}
 
+MSG("J_0:\n");
 for (i = 0; i < n_0; i++) { for (j = 0; j < n_0; j++) MSG("%.2f ", J_0[i + j*n_0]); MSG("\n"); }
 	}
 
@@ -2612,10 +2622,14 @@ MSG("predicted y_0: %.2f (%.3f)\n", newY[0], newSD[0]);
 	double newX[] = { 1.0, 1.0, 0.0, 0.0 };
 	double newY[] = { 0, 0 };
 	double newSD[] = { 0, 0 };
+
 blk.predict(2, newY, newS, newB, newX, true, newSD);
 MSG("predicted y_0: %.2f (%.3f); %.2f (%.3f)\n", newY[0], newSD[0], newY[1], newSD[1]);
+newY[0]=0;newY[1]=0;
+newSD[0]=0;newSD[1]=0;
 blk.predict(2, newY, newS, newB, newX, false, newSD);
 MSG("predicted y_0: %.2f (%.3f); %.2f (%.3f)\n", newY[0], newSD[0], newY[1], newSD[1]);
+
 }
 
 int main(void) {
@@ -2644,13 +2658,14 @@ int main(void) {
 	t1 = clock();
 	test_bc(BlockComp::Full, 4, true);
 	MSG("--> Done (%.2fsec)\n", (double)(clock() - t1)/CLOCKS_PER_SEC);
+*/
 
 	MSG("CPU full\n");
 	t1 = clock();
 	test_bc(BlockComp::Full, 4, false);
 	MSG("--> Done (%.2fsec)\n", (double)(clock() - t1)/CLOCKS_PER_SEC);
-*/
 
+/*
 	MSG("CPU blocks, no threads\n");
 	t1 = clock();
 	test_bc(BlockComp::Block, 1, false);
@@ -2660,7 +2675,6 @@ int main(void) {
 	t1 = clock();
 	test_bc(BlockComp::Block, 4, false);
 	MSG("--> Done (%.2fsec)\n", (double)(clock() - t1)/CLOCKS_PER_SEC);
-/*
 */
 
 	return(0);
