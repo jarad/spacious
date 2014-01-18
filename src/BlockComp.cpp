@@ -76,7 +76,7 @@ void BlockComp::init(int nthreads, bool gpu) {
 	setCovType(Exp);
 
 	// default control params
-	mIterTol = 1e-8;
+	mIterTol = 1e-5;
 	mMaxIter = 20;
 
 #ifdef CUDA
@@ -2141,8 +2141,12 @@ bool BlockComp::predict(int n_0, double *y_0, const double *newS, const int *new
 				return(false);
 			}
 
-			// fill in y_0
+			// fill in results
 			for (ix = 0; ix < nNewB[i]; ix++) y_0[ newWhichB[i][ix] ] = y_block[ix];
+
+			if (do_sd) {
+				for (ix = 0; ix < nNewB[i]; ix++) sd[ newWhichB[i][ix] ] = sd_block[ix];
+			}
 		}
 
 		for (i = 0; i < mNblocks; i++) {
@@ -2254,7 +2258,7 @@ bool BlockComp::blockPredict(int block, int n_0, double *y_0,
 	int    i1 = 1;
 	double zero = 0.0;
 
-	int i,j;
+	int i,j,k;
 	int ip,ip2;
 	int neighbor,neighbor2;
 	int N_in_pair,N_in_pair2;
@@ -2460,6 +2464,11 @@ bool BlockComp::blockPredict(int block, int n_0, double *y_0,
 		return(false);
 	}
 
+	// fill in lower part of A_0
+	for (i = 0; i < n_0; i++)
+		for (j = i+1; j < n_0; j++)
+			A_0[lsymi(i,j,n_0)] = A_0[usymi(i,j,n_0)];
+
 	// negate b_0
 	for (i = 0; i < n_0; i++) b_0[i] = -b_0[i];
 
@@ -2474,6 +2483,11 @@ bool BlockComp::blockPredict(int block, int n_0, double *y_0,
 		// add to J_0: B_0 x Sigma_block x t(B_0)...
 		// ...compute covariance for this block
 		mCov->compute(pairSigma, mTheta, N_block_new, pairD);
+
+		// fill in lower triangular piece
+		for (i = 0; i < N_block_new; i++)
+			for (j = i+1; j < N_block_new; j++)
+				pairSigma[lsymi(i,j,N_block_new)] = pairSigma[usymi(i,j,N_block_new)];
 
 		// ... multiplty B_0 x pairSigma x t(B_0)
 		dgemm_(&cN, &cN, &n_0, &mNB[block], &N_block_new, &p1, B_0, &n_0, pairSigma, &N_block_new, &zero, predMat, &n_0);
@@ -2513,24 +2527,78 @@ bool BlockComp::blockPredict(int block, int n_0, double *y_0,
 
 //			for (i = 0; i < N_in_pair;
 
-			// invert pairSigma
-			if (chol2inv(N_in_pair, pairSigma)) {
+			// store pairSigma in pairSigma2 for inversion
+			for (i = 0; i < N_in_pair; i++)
+				for (j = i; j < N_in_pair; j++)
+					pairSigma2[usymi(i,j,N_in_pair)] = pairSigma[usymi(i,j,N_in_pair)];
+
+			// invert pairSigma = inv(pairSigma2)
+			if (chol2inv(N_in_pair, pairSigma2)) {
 				MSG("blockPredict(): Unable to invert Sigma for pair (%d,%d)\n", block, neighbor);
 				return(false);
 			}
 
-/*
-           # covariance for b and n1
-            Sigma.n1    <- compute_cov(object$cov, theta, D[in.pair.n1,in.pair.n1])
-            invSigma.n1 <- chol2inv(chol(Sigma.n1))
+			// fill in lower parts of pairSigma and pairSigma2
+			for (i = 0; i < N_in_pair; i++) {
+				for (j = i+1; j < N_in_pair; j++) {
+					pairSigma[lsymi(i,j,N_in_pair)]  = pairSigma[usymi(i,j,N_in_pair)];
+					pairSigma2[lsymi(i,j,N_in_pair)] = pairSigma2[usymi(i,j,N_in_pair)];
+				}
+			}
 
-            J_0 <- J_0 + 2 * B_0 %*% Sigma.n1[1:n.in.b,n.in.b+1:n.in.n1] %*% invSigma.n1[n.in.b+1:n.in.n1,1:n.in.new]
-*/
+			// add 2 x B_0 x sigmaPair[block,neighbor] x invSigmaPair[neighbor,pred] to J_0
+			for (i = 0; i < N_block_new; i++) {
+				for (j = 0; j < n_0; j++) {
+					predMat[i + j*N_block_new] = 0;
+					for (k = 0; k < mNB[neighbor]; k++) {
+						predMat[i + j*N_block_new] += pairSigma[usymi(i,k,N_in_pair)]*pairSigma2[usymi(k,j,N_in_pair)];
+					}
+				}
+			}
+
+			for (i = 0; i < n_0; i++) {
+				for (j = 0; j < n_0; j++) {
+					for (k = 0; k < N_block_new; k++) {
+						J_0[i + j*n_0] += 2 * B_0[i + k*n_0]*predMat[k + j*N_block_new];
+					}
+				}
+			}
+
 		}
 
-MSG("J_0:\n");
-for (i = 0; i < n_0; i++) { for (j = 0; j < n_0; j++) MSG("%.2f ", J_0[i + j*n_0]); MSG("\n"); }
-	}
+		// invert J_0
+		if (chol2inv(n_0, J_0)) {
+			MSG("blockPredict(): Unable to invert J_0\n");
+			return(false);
+		}
+		// fill in lower part
+		for (i = 0; i < n_0; i++) for (j = i+1; j < n_0; j++) J_0[lsymi(i,j,n_0)] = J_0[usymi(i,j,n_0)];
+
+		// compute A_0 x inv(J_0) x A_0
+		double S_0[n_0*n_0];
+
+		for (i = 0; i < n_0; i++) for (j = 0; j < n_0; j++) S_0[i + j*n_0] = 0;
+		for (i = 0; i < n_0; i++)
+			for (j = 0; j < n_0; j++)
+				for (k = 0; k < n_0; k++)
+					S_0[i + j*n_0] += J_0[i + k*n_0]*A_0[k + j*n_0];
+
+		for (i = 0; i < n_0; i++) for (j = 0; j < n_0; j++) J_0[i + j*n_0] = 0;
+		for (i = 0; i < n_0; i++)
+			for (j = 0; j < n_0; j++)
+				for (k = 0; k < n_0; k++)
+					J_0[i + j*n_0] += A_0[i + k*n_0]*S_0[k + j*n_0];
+
+		// invert J_0
+		if (chol2inv(n_0, J_0)) {
+			MSG("blockPredict(): Unable to invert J_0\n");
+			return(false);
+		}
+
+		for (i = 0; i < n_0; i++) {
+			sd[i] = sqrt(J_0[i + i*n_0]);
+		}
+	} // end do_sd
 
 /*
 	- For each block we have prediction sites in...
@@ -2623,11 +2691,11 @@ MSG("predicted y_0: %.2f (%.3f)\n", newY[0], newSD[0]);
 	double newY[] = { 0, 0 };
 	double newSD[] = { 0, 0 };
 
-blk.predict(2, newY, newS, newB, newX, true, newSD);
+blk.predict(2, newY, newS, newB, newX, false, newSD);
 MSG("predicted y_0: %.2f (%.3f); %.2f (%.3f)\n", newY[0], newSD[0], newY[1], newSD[1]);
 newY[0]=0;newY[1]=0;
 newSD[0]=0;newSD[1]=0;
-blk.predict(2, newY, newS, newB, newX, false, newSD);
+blk.predict(2, newY, newS, newB, newX, true, newSD);
 MSG("predicted y_0: %.2f (%.3f); %.2f (%.3f)\n", newY[0], newSD[0], newY[1], newSD[1]);
 
 }
@@ -2658,14 +2726,13 @@ int main(void) {
 	t1 = clock();
 	test_bc(BlockComp::Full, 4, true);
 	MSG("--> Done (%.2fsec)\n", (double)(clock() - t1)/CLOCKS_PER_SEC);
-*/
 
 	MSG("CPU full\n");
 	t1 = clock();
 	test_bc(BlockComp::Full, 4, false);
 	MSG("--> Done (%.2fsec)\n", (double)(clock() - t1)/CLOCKS_PER_SEC);
+*/
 
-/*
 	MSG("CPU blocks, no threads\n");
 	t1 = clock();
 	test_bc(BlockComp::Block, 1, false);
@@ -2675,6 +2742,7 @@ int main(void) {
 	t1 = clock();
 	test_bc(BlockComp::Block, 4, false);
 	MSG("--> Done (%.2fsec)\n", (double)(clock() - t1)/CLOCKS_PER_SEC);
+/*
 */
 
 	return(0);
