@@ -48,8 +48,16 @@ public:
 	             bool do_sd, double *sd, bool local=false, int Nlocal=25);
 
 	// extract items of interest
+	int  getNumBeta() { return(mNbeta); }
 	void getBeta(double *beta);
+	void getBetaIter(double *beta);
+
+	int  getNumTheta() { return(mNtheta); }
 	void getTheta(double *theta);
+	void getThetaIter(double *theta);
+
+	void getLogLikIter(double *log_lik);
+
 	bool getConverged() { return(mConverged); }
 	int  getIters()     { return(mIters); }
 
@@ -118,7 +126,7 @@ private:
 	int     mNfixed;      // number fixed
 	bool   *mFixed;       // which are fixed?
 	double *mFixedVals;   // values of fixed params
-	double *mBeta;        // model parametes
+	double *mBeta;        // model parameters
 	double *mTheta;
 	double *mThetaT;      // transformed model parametes
 	double *mIterBeta;    // ... at each iteration

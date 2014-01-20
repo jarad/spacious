@@ -1008,8 +1008,8 @@ bool BlockComp::fit(bool verbose) {
 		computeLogLik(&log_lik);
 
 		// save values at this iteration
-		for (i = 0; i < mNbeta; i++)  { mIterBeta[i + mNbeta*(mIters+1)]  = mBeta[i];  }
-		for (i = 0; i < mNtheta; i++) { mIterTheta[i + mNbeta*(mIters+1)] = mTheta[i]; }
+		for (i = 0; i < mNbeta; i++)  { mIterBeta[i + mNbeta*(mIters+1)]   = mBeta[i];  }
+		for (i = 0; i < mNtheta; i++) { mIterTheta[i + mNtheta*(mIters+1)] = mTheta[i]; }
 		mIterLogLik[mIters+1] = log_lik;
 
 		if (verbose) {
@@ -2636,11 +2636,44 @@ bool BlockComp::blockPredict(int block, int n_0, double *y_0,
 }
 
 void BlockComp::getBeta(double *beta) {
+	if (mIters <= 0) return;
+
 	for (int i = 0; i < mNbeta; i++) beta[i] = mBeta[i];
 }
 
+void BlockComp::getBetaIter(double *beta) {
+	if (mIters <= 0) return;
+
+	for (int i = 0; i < mNbeta; i++)
+		for (int j = 0; j < (mIters+1); j++)
+			beta[i + j*mNbeta] = mIterBeta[i + j*mNbeta];
+}
+
+/*
+		for (i = 0; i < mNbeta; i++)  { mIterBeta[i + mNbeta*(mIters+1)]   = mBeta[i];  }
+		for (i = 0; i < mNtheta; i++) { mIterTheta[i + mNtheta*(mIters+1)] = mTheta[i]; }
+		mIterLogLik[mIters+1] = log_lik;
+*/
+
 void BlockComp::getTheta(double *theta) {
+	if (mIters <= 0) return;
+
 	for (int i = 0; i < mNtheta; i++) theta[i] = mTheta[i];
+}
+
+void BlockComp::getThetaIter(double *theta) {
+	if (mIters <= 0) return;
+
+	for (int i = 0; i < mNtheta; i++)
+		for (int j = 0; j < (mIters+1); j++)
+			theta[i + j*mNtheta] = mIterTheta[i + j*mNtheta];
+}
+
+void BlockComp::getLogLikIter(double *log_lik) {
+	if (mIters <= 0) return;
+
+	for (int i = 0; i < (mIters+1); i++)
+		log_lik[i] = mIterLogLik[i];
 }
 
 #ifdef CLINE
@@ -2674,6 +2707,39 @@ void test_bc(BlockComp::LikForm lf, int nthreads, bool gpu) {
 	if (!blk.fit(true)) {
 		MSG("Error with fit.\n");
 		return;
+	}
+
+	// get beta iterations
+	double iterBeta[(blk.getIters()+1)*blk.getNumBeta()];
+	double iterTheta[(blk.getIters()+1)*blk.getNumTheta()];
+	double iterLogLik[(blk.getIters()+1)];
+
+	blk.getBetaIter(iterBeta);
+	blk.getThetaIter(iterTheta);
+	blk.getLogLikIter(iterLogLik);
+
+	MSG("numIters = %d\n", blk.getIters());
+	MSG("betas:\n");
+	for (int j = 0; j < blk.getIters()+1; j++) {
+		MSG("[%d] ", j);
+		for (int i = 0; i < blk.getNumBeta(); i++) {
+			MSG("%.5f ", iterBeta[i+j*blk.getNumBeta()]);
+		}
+		MSG("\n");
+	}
+
+	MSG("thetas:\n");
+	for (int j = 0; j < blk.getIters()+1; j++) {
+		MSG("[%d] ", j);
+		for (int i = 0; i < blk.getNumTheta(); i++) {
+			MSG("%.5f ", iterTheta[i+j*blk.getNumTheta()]);
+		}
+		MSG("\n");
+	}
+
+	MSG("log lik:\n");
+	for (int j = 0; j < blk.getIters()+1; j++) {
+		MSG("[%d] %.5f\n", j, iterLogLik[j]);
 	}
 
 	//double newS[] = { 0.75, 0.80 };
