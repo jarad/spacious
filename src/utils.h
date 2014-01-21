@@ -61,4 +61,12 @@ int chol2inv(int n, double *A, bool do_log_det=false, double *log_det=NULL);
 void disp_sym(double *mat, int lo, int hi);
 void disp_usym(double *mat, int lo, int hi, int n);
 
+struct st_int {
+	int id;
+	int i;
+};
+
+int compare_double(const void *p1, const void *p2);
+int compare_int(const void *p1, const void *p2);
+
 #endif

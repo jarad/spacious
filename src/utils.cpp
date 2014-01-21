@@ -69,3 +69,20 @@ void disp_usym(double *mat, int lo, int hi, int n) {
 	  MSG("\n");
 	}
 }
+
+// compare doubles
+int compare_double(const void *p1, const void *p2) {
+	if ( *(double *)p1 > *(double *)p2 ) {
+		return(1);
+	} else if ( *(double *)p1 < *(double *)p2 ) {
+		return(-1);
+	} else {
+		return(0);
+	}
+}
+
+// compare ints
+int compare_int(const void *p1, const void *p2) {
+	return( ((st_int *)p1)->i - ((st_int *)p2)->i );
+}
+

@@ -96,6 +96,7 @@ private:
 	int      mNblocks;    // total number of blocks
 	int     *mB;          // block membership
 	int     *mNB;         // number of observations in each block
+	int     *mOrderPairs; // order of pairs of blocks
 	int    **mWhichB;     // holds indices for obs in each block
 	double **mWithinD;    // within block distance matrices
 	double **mBetweenD;   // between block distance matrices

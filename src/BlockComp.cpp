@@ -101,6 +101,7 @@ void BlockComp::init(int nthreads, bool gpu) {
 // initialize pointers
 void BlockComp::initPointers() {
 	mNB         = NULL;
+	mOrderPairs = NULL;
 	mWhichB     = NULL;
 	mWithinD    = NULL;
 	mBetweenD   = NULL;
@@ -147,6 +148,7 @@ void BlockComp::cleanup() {
 	int i;
 
 	free(mNB);
+	free(mOrderPairs);
 
 	if (mWhichB != NULL) {
 		for (i = 0; i < mNblocks; i++) {
@@ -343,6 +345,28 @@ bool BlockComp::setData(int n, double *y, double *S, int nblocks, int *B, int p,
 		for (i = 0; i < mN; i++) {
 			mNB[ mB[i] ]++;
 		}
+
+#ifdef PTHREAD
+		if (mNthreads > 1) {
+			// set order based on number of obs in each block
+			mOrderPairs = (int *)malloc(sizeof(int)*mNpairs);
+
+			// structure to hold IDs and values
+			st_int tmpOrder[mNpairs];
+			for (i = 0; i < mNpairs; i++) {
+				tmpOrder[i].id = i;
+				tmpOrder[i].i  = mNB[ mNeighbors[i] ] + mNB[ mNeighbors[i + mNpairs] ];
+			}
+
+			// do the sort
+			qsort(tmpOrder, mNpairs, sizeof(int *), compare_int);
+
+			// save the ordering (larest to smallest)
+			for (i = 0; i < mNpairs; i++) {
+				mOrderPairs[mNpairs-1-i] = tmpOrder[i].id;
+			}
+		}
+#endif
 
 		// determine the largest number of obs in each pair
 		mMaxPair = 0;
@@ -1430,7 +1454,7 @@ void *BlockComp::updateBetaThread(void *work) {
 			break;
 		}
 
-		if (!bc->updateBetaPair(pair, bc->mSigma[id], bc->mBeta_A_t[id], bc->mBeta_b_t[id])) {
+		if (!bc->updateBetaPair(bc->mOrderPairs[pair], bc->mSigma[id], bc->mBeta_A_t[id], bc->mBeta_b_t[id])) {
 			// error updating this pair
 			bc->mThreadStatus[id] = false;
 			return(NULL);
@@ -1475,9 +1499,9 @@ bool BlockComp::updateTheta() {
 			// process each block pair in order
 			for (pair = 0; pair < mNpairs; pair++) {
 				if (!updateThetaPair(pair, mSigma[0], mTheta_W, mTheta_H, mTheta_P, resids, q, u)) {
-						// error updating this pair
-						MSG("Unable to update theta for pair %d\n", pair);
-						return(false);
+					// error updating this pair
+					MSG("Unable to update theta for pair %d\n", pair);
+					return(false);
 				}
 			}
 
@@ -2000,7 +2024,7 @@ void *BlockComp::updateThetaThread(void *work) {
 			break;
 		}
 
-		if (!bc->updateThetaPair(pair, bc->mSigma[id], bc->mTheta_W_t[id], bc->mTheta_H_t[id],
+		if (!bc->updateThetaPair(bc->mOrderPairs[pair], bc->mSigma[id], bc->mTheta_W_t[id], bc->mTheta_H_t[id],
 		                         bc->mTheta_P_t[id], resids, q, bc->mTheta_u_t[id])) {
 			// error updating this pair
 			bc->mThreadStatus[id] = false;
@@ -2799,16 +2823,33 @@ int main(void) {
 	MSG("--> Done (%.2fsec)\n", (double)(clock() - t1)/CLOCKS_PER_SEC);
 */
 
+/*
 	MSG("CPU blocks, no threads\n");
 	t1 = clock();
 	test_bc(BlockComp::Block, 1, false);
 	MSG("--> Done (%.2fsec)\n", (double)(clock() - t1)/CLOCKS_PER_SEC);
+*/
 
 	MSG("CPU blocks, 4 threads\n");
 	t1 = clock();
 	test_bc(BlockComp::Block, 4, false);
 	MSG("--> Done (%.2fsec)\n", (double)(clock() - t1)/CLOCKS_PER_SEC);
+
 /*
+	st_int i1,i2,i3;
+	i1.id = 1; i2.id = 2; i3.id = 3;
+	i1.i = 3; i2.i = 2; i3.i = 2;
+	MSG("%d, %d, %d\n",
+		compare_int((void *)&i1, (void *)&i2),
+		compare_int((void *)&i2, (void *)&i1),
+		compare_int((void *)&i2, (void *)&i3));
+	int d1 = 3.0;
+	int d2 = 2.0;
+	int d3 = 2.0;
+	MSG("%d, %d, %d\n",
+		compare_double((void *)&d1, (void *)&d2),
+		compare_double((void *)&d2, (void *)&d1),
+		compare_double((void *)&d2, (void *)&d3));
 */
 
 	return(0);
