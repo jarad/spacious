@@ -26,6 +26,7 @@ CXXFLAGS=`"${R_HOME}/bin/R" CMD config CXXFLAGS`
 LDFLAGS=`"${R_HOME}/bin/R" CMD config LDFLAGS`
 BLAS_LIBS=`"${R_HOME}/bin/R" CMD config BLAS_LIBS`
 LAPACK_LIBS=`"${R_HOME}/bin/R" CMD config LAPACK_LIBS`
+INC="$INC -I${R_HOME}/include"
 
 AC_HEADER_STDC
 
@@ -45,15 +46,20 @@ AC_CHECK_LIB(pthread, pthread_create, [
 ])
 
 # cuda support
-#AC_ARG_WITH([cuda],
-#	AC_HELP_STRING([--with-cuda=DIR],
-#		[cuda root [/usr/local/cuda]]),
-#		[
-#			CUDA="$withval"
-#			LD_CUDA="-L${CUDA}/lib64 -lcublas -lcudart"
-#		],
-#		[CUDA=""; LD_CUDA=""])
-#CUDA="oh_yeah"
+AC_ARG_WITH([cuda],
+	AC_HELP_STRING([--with-cuda=DIR],
+		[cuda root [/usr/local/cuda]]),
+		[
+			CUDA="$withval"
+			if test x"$CUDA" = xyes; then
+				CUDA="/usr/local/cuda"
+			fi
+
+			LDFLAGS="${LDFLAGS} -L${CUDA}/lib64 -lcublas -lcudart"
+			INC="${INC} -I${CUDA}/include"
+			FEATURES="$FEATURES -DCUDA"
+			CUDA_OBJS="utils_cuda.o utils_cuda_kernels.o"
+		])
 
 AC_SUBST(CC)
 AC_SUBST(CXX)
@@ -63,10 +69,12 @@ AC_SUBST(CPICFLAGS)
 AC_SUBST(CPPFLAGS)
 AC_SUBST(CXXFLAGS)
 AC_SUBST(LDFLAGS)
+AC_SUBST(INC)
 AC_SUBST(BLAS_LIBS)
 AC_SUBST(LAPACK_LIBS)
 AC_SUBST(PTHREAD_LIBS)
 AC_SUBST(CUDA)
+AC_SUBST(CUDA_OBJS)
 AC_SUBST(FEATURES)
 
 AC_OUTPUT
