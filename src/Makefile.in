@@ -1,0 +1,41 @@
+#INC   = -I/usr/local/lib64/R/include -I/usr/local/cuda-5.0/include -I/home/rjp/include
+#LIB   = -L/usr/local/lib64/R/lib -L/usr/local/cuda-5.0/lib64 -L/home/rjp/lib -lR -lRblas -lRlapack -lm -pthread -lcublas -lcudart
+#FLAGS = -DDEBUG -DCLINE -DPTHREAD -DCUDA -Wall -ggdb -O3 -m64
+
+# compilers
+CC  = @CC@
+CXX = @CXX@
+
+OBJS = BlockComp.o covs.o utils.o spacious_fit.o
+#CUDA_OBJS = utils_cuda.cpp utils_cuda_kernels.cu
+
+# includes
+#CUDA_INC = -I@CUDA@/include
+
+# compile flags
+CFLAGS    = -Wall @R_CFLAGS@
+CXXFLAGS  = -Wall @R_CXXFLAGS@
+CPPFLAGS  = @R_CPPFLAGS@
+CPICFLAGS = @R_CPICFLAGS@
+INC       = -I@R_HOME@/include
+
+# link flags
+LDFLAGS = @R_LDFLAGS@ @BLAS_LIBS@ @LAPACK_LIBS@
+
+# shared objects we need to compile
+TARGETS = spacious.so
+
+#NVCC = @CUDA@/bin/nvcc -gencode arch=compute_10,code=sm_10 -gencode arch=compute_11,code=sm_11 -gencode arch=compute_12,code=sm_12 -gencode arch=compute_13,code=sm_13 -gencode arch=compute_20,code=sm_20
+
+all: $(TARGETS)
+
+$(TARGETS): $(OBJS)
+	$(CXX) -shared $(LDFLAGS) $(OBJS) -o $@
+
+$(OBJS): %.o: %.cpp
+	$(CXX) -c $(CPICFLAGS) $(CXXFLAGS) $(CPPFLAGS) $(INC) $^ -o $@
+
+clean:
+	rm -rf *o
+
+.PHONY: all clean

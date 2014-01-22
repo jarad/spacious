@@ -361,7 +361,7 @@ bool BlockComp::setData(int n, double *y, double *S, int nblocks, int *B, int p,
 			// do the sort
 			qsort(tmpOrder, mNpairs, sizeof(int *), compare_int);
 
-			// save the ordering (larest to smallest)
+			// save the ordering (largest to smallest)
 			for (i = 0; i < mNpairs; i++) {
 				mOrderPairs[mNpairs-1-i] = tmpOrder[i].id;
 			}
@@ -624,7 +624,6 @@ bool BlockComp::computeLogLik(double *log_lik) {
 			dgemv_(&cN, &mN, &mN, &p1, mSigma[0], &mN, mResids, &i1, &p1, q, &i1);
 #ifdef CUDA
 		} else {
-#endif
 			// use GPU
 			double p1 = 1.0;
 			double n1 = -1.0;
@@ -717,7 +716,6 @@ bool BlockComp::computeLogLik(double *log_lik) {
 			cudaFree(devResids);
 			cudaFree(devq);
 
-#ifdef CUDA
 		}
 #endif
 
@@ -2824,11 +2822,11 @@ int main(void) {
 */
 
 /*
+*/
 	MSG("CPU blocks, no threads\n");
 	t1 = clock();
 	test_bc(BlockComp::Block, 1, false);
 	MSG("--> Done (%.2fsec)\n", (double)(clock() - t1)/CLOCKS_PER_SEC);
-*/
 
 	MSG("CPU blocks, 4 threads\n");
 	t1 = clock();

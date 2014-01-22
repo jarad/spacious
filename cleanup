@@ -1,5 +1,5 @@
 #!/bin/bash
 
 # clean up source tree
-rm src/*.o
-rm src/*.so
+rm -f src/*.o
+rm -f src/*.so
