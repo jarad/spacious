@@ -13,14 +13,15 @@ OBJS = BlockComp.o covs.o utils.o spacious_fit.o
 #CUDA_INC = -I@CUDA@/include
 
 # compile flags
-CFLAGS    = -Wall @R_CFLAGS@
-CXXFLAGS  = -Wall @R_CXXFLAGS@
-CPPFLAGS  = @R_CPPFLAGS@
-CPICFLAGS = @R_CPICFLAGS@
+CFLAGS    = -Wall @CFLAGS@
+CXXFLAGS  = -Wall @CXXFLAGS@
+CPPFLAGS  = @CPPFLAGS@
+CPICFLAGS = @CPICFLAGS@
 INC       = -I@R_HOME@/include
+FEATURES  = @FEATURES@
 
 # link flags
-LDFLAGS = @R_LDFLAGS@ @BLAS_LIBS@ @LAPACK_LIBS@
+LDFLAGS = @LDFLAGS@ @BLAS_LIBS@ @LAPACK_LIBS@ @PTHREAD_LIBS@
 
 # shared objects we need to compile
 TARGETS = spacious.so
@@ -32,10 +33,11 @@ all: $(TARGETS)
 $(TARGETS): $(OBJS)
 	$(CXX) -shared $(LDFLAGS) $(OBJS) -o $@
 
-$(OBJS): %.o: %.cpp
-	$(CXX) -c $(CPICFLAGS) $(CXXFLAGS) $(CPPFLAGS) $(INC) $^ -o $@
+%.o: %.cpp
+	$(CXX) -c $(CPICFLAGS) $(CXXFLAGS) $(CPPFLAGS) $(INC) $(FEATURES) $^ -o $@
 
 clean:
-	rm -rf *o
+	-rm -f *.o
+	-rm -f *.so
 
 .PHONY: all clean

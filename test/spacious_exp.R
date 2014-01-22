@@ -63,7 +63,7 @@ for (i in 1:500) {
 done
 }
 
-if (TRUE) { # GPU vs not
+if (FALSE) { # GPU vs not
 fit.spacious <- spacious(y~x, data=data.frame(y=y[1:n], x=x1[1:n]), S=S[1:n,], cov="exp", blocks=list(type="full"), nthreads=1, gpu=TRUE, verbose=TRUE)
 print(fit.spacious$time)
 
@@ -72,8 +72,10 @@ print(fit.spacious$time)
 done
 }
 
-if (FALSE) { # threads
+if (TRUE) { # threads
 cat("Fitting...\n")
+fit.spacious <- spacious(y~x, data=data.frame(y=y[1:n], x=x1[1:n]), S=S[1:n,], cov="exp", blocks=list(type="regular", nblocks=6^2), nthreads=1, gpu=FALSE, verbose=TRUE)
+print(fit.spacious$time)
 fit.spacious <- spacious(y~x, data=data.frame(y=y[1:n], x=x1[1:n]), S=S[1:n,], cov="exp", blocks=list(type="regular", nblocks=6^2), nthreads=4, gpu=FALSE, verbose=TRUE)
 print(fit.spacious$time)
 #fit.spacious <- spacious(y~x, data=data.frame(y=y[1:n], x=x1[1:n]), S=S[1:n,], cov="exp", blocks=list(type="regular", nblocks=6^2), nthreads=3, gpu=FALSE)
@@ -84,7 +86,7 @@ print(fit.spacious$time)
 #print(fit.spacious$time)
 }
 
-if (TRUE) { # compare R vs C
+if (FALSE) { # compare R vs C
 	fit.R <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="exp", blocks=list(type="regular", nblocks=6^2), verbose=TRUE, engine="R")
 	fit.C <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="exp", blocks=list(type="regular", nblocks=6^2), verbose=TRUE, engine="C")
 	preds.R <- predict(fit.R, newdata=data.frame(x2=x1[(n+1):(n+np)]), newS=S[(n+1):(n+np),], interval="prediction", level=0.9)
