@@ -287,6 +287,8 @@ void BlockComp::setCovType(CovType type) {
 	// obtain class for working with covariance type
 	if (mCovType == Exp) {
 		mCov = new CovExp();
+	} else if (mCovType == Matern) {
+		mCov = new CovMatern();
 	} else {
 		MSG("Unknown covariance type\n");
 	}
@@ -606,7 +608,7 @@ bool BlockComp::computeLogLik(double *log_lik) {
 		}
 #endif
 
-		*log_lik /= -2;
+		*log_lik *= -0.5;
 	} else if (mLikForm == Full) {
 		for (i = 0; i < mN; i++) q[i] = 0;
 
@@ -723,7 +725,7 @@ bool BlockComp::computeLogLik(double *log_lik) {
 		for (i = 0; i < mN; i++)
 			*log_lik += mResids[i] * q[i];
 
-		*log_lik /= -2;
+		*log_lik *= -0.5;
 	}
 
 	return(true);
@@ -736,6 +738,8 @@ bool BlockComp::computeLogLikPair(double *log_lik, int pair, double *Sigma, doub
 
 	int i,j;
 	int c;
+
+	double log_det;
 
 	if (!mConsMem) {
 		// fill in covariance matrix between these two blocks
@@ -750,10 +754,12 @@ bool BlockComp::computeLogLikPair(double *log_lik, int pair, double *Sigma, doub
 	}
 
 	// invert Sigma
-	if (chol2inv(N_in_pair, Sigma)) {
+	if (chol2inv(N_in_pair, Sigma, true, &log_det)) {
 		MSG("computeLogLikPair(): Unable to invert Sigma\n");
 		return(false);
 	}
+
+	*log_lik += log_det;
 
 	// fill in lower triangle
 	for (i = 0; i < N_in_pair; i++) {

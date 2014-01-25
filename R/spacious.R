@@ -5,7 +5,7 @@
 	B, neighbors,
 	fixed=list(smoothness=0.5),             # fixed parameters
 	blocks=list(type="cluster"),            # blocking style
-	verbose=FALSE, tol=1e-3, maxIter=25,    # algorithm control params
+	verbose=FALSE, tol=1e-8, maxIter=25,    # algorithm control params
 	compute_se=FALSE, compute_diag=FALSE,
 	nthreads=1, gpu=FALSE,
 	engine="C"                              # use C or R implementation?

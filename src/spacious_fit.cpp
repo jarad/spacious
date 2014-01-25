@@ -66,7 +66,11 @@ void spacious_fit(
 	// set fixed parameters
 	blk->setFixed(theta_fixed, theta);
 
-	// TODO: set tolerance and max iters
+	// set tolerance
+	blk->setTol(*tol);
+
+	// set max iters
+	blk->setMaxIter(*max_iter);
 
 	// fit!
 	if (!blk->fit(verbose[0])) {

@@ -37,6 +37,8 @@ public:
 	bool setData(int n, double *y, double *S, int nblocks, int *B, int p, double *X, int npairs, int *neighbors);
 	void setInits(double *theta);
 	void setFixed(bool *fixed, double *values);
+	void setTol(double tol) { mIterTol = tol; }
+	void setMaxIter(double niter) { mMaxIter = niter; }
 	void computeWithinDistance(int n, const double *S, double *D);
 	void computeBetweenDistance(int n1, const double *S1, int n2, const double *S2, double *D);
 

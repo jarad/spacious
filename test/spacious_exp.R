@@ -13,7 +13,7 @@ if (TRUE) {
 set.seed(311)
 
 # generate data to use for fitting a block composite model
-n <- 1024
+n <- 1*1024
 np <- 5   # number to predict
 
 # generate spatial locations S
@@ -23,8 +23,8 @@ S <- round(cbind(runif(n+np), runif(n+np)),3)
 D <- rdist(S); D[row(D)==col(D)] <- 0
 
 # matern covariance function parameters
-nugget <- 0.5
-tau2   <- 0.5
+nugget <- 0.25
+tau2   <- 0.25
 range  <- 0.25
 smooth <- 0.50  # 0.5 = exponential cov
 mu <- 5
@@ -72,7 +72,7 @@ print(fit.spacious$time)
 done
 }
 
-if (TRUE) { # threads
+if (FALSE) { # threads
 cat("Fitting...\n")
 fit.spacious <- spacious(y~x, data=data.frame(y=y[1:n], x=x1[1:n]), S=S[1:n,], cov="exp", blocks=list(type="regular", nblocks=6^2), nthreads=1, gpu=FALSE, verbose=TRUE)
 print(fit.spacious$time)
@@ -86,9 +86,22 @@ print(fit.spacious$time)
 #print(fit.spacious$time)
 }
 
-if (FALSE) { # compare R vs C
-	fit.R <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="exp", blocks=list(type="regular", nblocks=6^2), verbose=TRUE, engine="R")
-	fit.C <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="exp", blocks=list(type="regular", nblocks=6^2), verbose=TRUE, engine="C")
+if (TRUE) { # compare R vs C
+#	fit.R <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="exp", blocks=list(type="full"), verbose=TRUE, engine="R")
+#	fit.C <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="exp", blocks=list(type="full"), verbose=TRUE, engine="C")
+#done
+	#fit.R <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="exp", blocks=list(type="regular", nblocks=6^2), verbose=TRUE, engine="R")
+	#fit.R <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="matern", fixed=list(smoothness=1/2), blocks=list(type="regular", nblocks=6^2), verbose=TRUE, engine="R")
+	#fit.R <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="matern", fixed=list(smoothness=3/2), blocks=list(type="regular", nblocks=6^2), verbose=TRUE, engine="R")
+	#fit.R <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="matern", fixed=list(smoothness=5/2), blocks=list(type="regular", nblocks=6^2), verbose=TRUE, engine="R")
+	#fit.R <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="matern", fixed=list(smoothness=7/2), blocks=list(type="regular", nblocks=6^2), verbose=TRUE, engine="R")
+	#fit.R <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="matern", fixed=list(smoothness=9/2), blocks=list(type="regular", nblocks=6^2), verbose=TRUE, engine="R")
+	#fit.R <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="matern", fixed=list(smoothness=11/2), blocks=list(type="regular", nblocks=6^2), verbose=TRUE, engine="R")
+	#fit.R <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="matern", fixed=list(smoothness=13/2), blocks=list(type="regular", nblocks=6^2), verbose=TRUE, engine="R")
+#done
+	fit.CE <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="exp", blocks=list(type="regular", nblocks=6^2), verbose=TRUE, engine="C", nthreads=4)
+	#fit.CM <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="matern", blocks=list(type="regular", nblocks=6^2), verbose=TRUE, engine="C")
+done
 	preds.R <- predict(fit.R, newdata=data.frame(x2=x1[(n+1):(n+np)]), newS=S[(n+1):(n+np),], interval="prediction", level=0.9)
 	preds.C <- predict(fit.C, newdata=data.frame(x2=x1[(n+1):(n+np)]), newS=S[(n+1):(n+np),], interval="prediction", level=0.9)
 }

@@ -10,3 +10,6 @@ manual
 .png
 comp.sh
 block_test
+Makefile.good
+TODO
+unit_tests

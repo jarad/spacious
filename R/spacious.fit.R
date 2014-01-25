@@ -1,6 +1,6 @@
 # function to run algorithm for fitting a block composite model
 "spacious.fit" <- function(y, X, S, nblocks, B, neighbors, cov, n, p, R, theta, theta_fixed,
-	verbose, tol=1e-3, maxIter=100, compute_se=FALSE) {
+	verbose, tol=1e-8, maxIter=100, compute_se=FALSE) {
 	# y: response
 	# X: model matrix
 	# S: spatial locations
@@ -58,25 +58,35 @@
 				-exp(theta[2]+theta[3]) * D[in.pair,in.pair] * exp(-exp(theta[3]) * D[in.pair,in.pair])
 			}
 		)
-		t_theta <- function(theta) { exp(theta) }
+		#t_theta <- function(theta) { exp(theta) }
+		t_theta <- function(theta) { c(exp(theta[1]), exp(theta[2]), exp(-theta[3])) }
+		u_theta <- function(theta) { c(log(theta[1]), log(theta[2]), -log(theta[3])) }
 	} else if (cov == "matern") {
+#rho <- (D/theta[3])^(theta[4]) * besselK(D/theta[3], theta[4])/( 2^(theta[4]-1) * gamma(theta[4]))
+#rho <- (D exp(-theta[3]))^(exp(theta[4])) * besselK(D exp(-theta[3]), exp(theta[4]))/( 2^(exp(theta[4])-1) * gamma(exp(theta[4])))
 		partials <- list(
 			function(theta, n.pair, in.pair) {
 				exp(theta[1])*diag(n.pair)
 			},
 			function(theta, n.pair, in.pair) {
-				theta4 <- tsmooth(theta[4])
-				mid <- 2*D[in.pair,in.pair]*exp(theta[3])*sqrt(theta4)
-				rho <- mid^theta4 * besselK(mid, theta4)/(2^(theta4-1) * gamma(theta4))
-				rho[is.na(rho)] <- 1
-				exp(theta[2])*rho
+#				theta4 <- tsmooth(theta[4])
+#				mid <- 2*D[in.pair,in.pair]*exp(theta[3])*sqrt(theta4)
+#				rho <- mid^theta4 * besselK(mid, theta4)/(2^(theta4-1) * gamma(theta4))
+#				rho[is.na(rho)] <- 1
+#				exp(theta[2])*rho
+
+				exp(theta[2]) * matern_rho(t_theta(theta), D[in.pair,in.pair])
 			},
 			function(theta, n.pair, in.pair) {
-				theta4 <- tsmooth(theta[4])
-				mid <- 2*D[in.pair,in.pair]*exp(theta[3])*sqrt(theta4)
-				rho <- -mid^(theta4+1)*besselK(mid, theta4-1)/(2^(theta4-1) * gamma(theta4))
+#				theta4 <- tsmooth(theta[4])
+#				mid <- 2*D[in.pair,in.pair]*exp(theta[3])*sqrt(theta4)
+#				rho <- -mid^(theta4+1)*besselK(mid, theta4-1)/(2^(theta4-1) * gamma(theta4))
+#				rho[is.na(rho)] <- 0
+#				exp(theta[2])*rho
+				mid <- D[in.pair,in.pair] * exp(theta[3])
+				rho <- -(mid)^(exp(theta[4])+1) * besselK(mid, exp(theta[4])-1)/( 2^(exp(theta[4])-1) * gamma(exp(theta[4])))
 				rho[is.na(rho)] <- 0
-				exp(theta[2])*rho
+				exp(theta[2]) * rho
 			},
 			function(theta, n.pair, in.pair) {
 				e <- 1e-5
@@ -86,7 +96,8 @@
 				exp(theta[2]) * p
 			}
 		)
-		t_theta <- function(theta) { c(exp(theta[1:3]),tsmooth(theta[4])) }
+		t_theta <- function(theta) { c(exp(theta[1]), exp(theta[2]), exp(-theta[3]), exp(theta[4])) }
+		u_theta <- function(theta) { c(log(theta[1]), log(theta[2]), -log(theta[3]), log(theta[4])) }
 	} else {
 		stop(paste("Unknown covariance type",cov))
 	}
@@ -189,16 +200,21 @@
 
 			Sigma <- compute_cov(cov, t_theta(theta), D[in.pair,in.pair])
 			cholSigma <- chol(Sigma)
-			invSigma <- chol2inv(cholSigma)
+			#invSigma <- chol2inv(cholSigma)
 
-			Xb <- X[in.pair,] %*% beta
-			ymXb <- y[in.pair]-Xb
+			ymXb <- y[in.pair] - (X[in.pair,] %*% beta)
+			L <- forwardsolve(t(cholSigma), ymXb)
 
-			-sum(log(diag(cholSigma))) -0.5 * t(ymXb) %*% invSigma %*% ymXb
+			#-sum(log(diag(cholSigma))) -0.5 * t(ymXb) %*% invSigma %*% ymXb
+			#-0.5*log(det(Sigma)) -0.5 * t(ymXb) %*% invSigma %*% ymXb
+			-sum(log(diag(cholSigma))) -0.5 * t(L) %*% L
 		}) )
 	}
 
 	# estimate params
+
+	# incoming theta need to be transformed
+	theta <- u_theta(theta)
 
 	# get initial beta from initial theta
 	beta   <- update_beta(theta)
@@ -212,7 +228,8 @@
 	names.show <- c(names.show, "theta", rep("", Ntheta-1))
 	names.show <- c(names.show, "log lik")
 
-	ll <- -2 * loglik(beta,theta)
+	# initial log-likelihood
+	ll <- loglik(beta,theta)
 
 	# save theta and log lik at each iteration
 	iters_theta <- t_theta(theta)
@@ -229,8 +246,8 @@
 		beta <- update_beta(theta)
 
 
-		# get -2 * log likelihood
-		ll <- -2 * loglik(beta, theta)
+		# get log likelihood
+		ll <- loglik(beta, theta)
 
 		# save values at each iteration
 		iters_theta <- rbind( iters_theta, t_theta(theta) )
@@ -246,15 +263,7 @@
 		}
 
 		# have we converged?
-		max_diff <- 0
-		if (Nnot_fixed > 0) {
-			max_diff <- max( c(
-				abs(prev.beta - beta)/abs(beta),
-				abs(prev.theta[which.not_fixed]-theta[which.not_fixed])/abs(theta[which.not_fixed])
-			) )
-		}
-
-		if ( max_diff <= tol ) {
+		if (abs(ll - iters_ll[iter])/abs(0.1 + ll) <= tol) {
 			if (verbose) {
 				cat("Converged at iteration",iter,"\n")
 			}
@@ -414,9 +423,9 @@ print(round(FI %*% solve(J.theta),3))
 	se_theta <- as.vector(sqrt(diag(vcov.theta)) * theta)
 
 	# transform theta[3] to range form
-	theta[3]        <- 1/theta[3]
+	#theta[3]        <- 1/theta[3]
 	se_theta[3]     <- se_theta[3] * theta[3]^2
-	iters_theta[,3] <- 1/iters_theta[,3]
+	#iters_theta[,3] <- 1/iters_theta[,3]
 
 	# return estimates and standard errors
 	list(

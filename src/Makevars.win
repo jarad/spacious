@@ -1,9 +1,11 @@
 # pthreads only
-PTHREAD_CPPFLAGS = -DPTHREAD
-PTHREAD_LIBS     = -pthread
+#PTHREAD_CPPFLAGS = -DPTHREAD
+#PTHREAD_LIBS     = -pthread
 # pthreads and cuda
-CUDA_CPPFLAGS = -DCUDA -I/home/rjp/include -I/usr/local/cuda-5.0/include
-CUDA_LIBS     = -L/home/rjp/lib -L/usr/local/cuda-5.0/lib64 -lcublas -lcudart
+#CUDA_CPPFLAGS = -DCUDA -I/home/rjp/include -I/usr/local/cuda-5.0/include
+#CUDA_LIBS     = -L/home/rjp/lib -L/usr/local/cuda-5.0/lib64 -lcublas -lcudart
 
 #PKG_CPPFLAGS = $(PTHREAD_CPPFLAGS) #$(CUDA_CPPFLAGS)
 PKG_LIBS = $(LAPACK_LIBS) $(BLAS_LIBS) #$(PTHREAD_LIBS) #$(CUDA_LIBS)
+
+OBJECTS = BlockComp.o covs.o spacious_fit.o utils.o

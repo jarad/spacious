@@ -56,4 +56,21 @@ public:
 private:
 };
 
+// matern covariance
+class CovMatern : public Cov {
+public:
+	CovMatern();
+
+	virtual void compute(double *Sigma, double *theta, int n1, double *D1,
+	                     int n2, double *D2, double *Dc, bool packed = false, bool transpose = false);
+	virtual void computeCross(double *Sigma, double *theta, int n1, int n2, double *Dc, bool full, bool packed = false, bool transpose = false);
+	virtual void partials(double *P, bool *diag, int param, double *theta, double *thetaT,
+	                      int n1, double *D1, int n2, double *D2, double *Dc, bool packed = false);
+	virtual void transformToReal(double *theta);
+	virtual void transformFromReal(double *theta);
+
+private:
+	double rho(double d, double *theta);  // correlation based on distance d and parameters theta
+};
+
 #endif
