@@ -3,6 +3,7 @@
 if ("package:spacious" %in% search()) {
 	# unload the package
 	detach("package:spacious", unload=TRUE)
+	library.dynam.unload("spacious", libpath="~/Rlib/spacious")
 }
 
 # load the package
@@ -12,7 +13,7 @@ require(geoR)
 set.seed(311)
 
 # generate data to use for fitting a block composite model
-n <- 100
+n <- 1024
 np <- 5   # number to predict
 
 # generate spatial locations S
@@ -41,10 +42,20 @@ Sigma <- nugget * diag(nrow(D)) + tau2 * rho
 
 # generate data
 y <- mvrnorm(1, mu=rep(mu, n+np), Sigma=Sigma)
-
-# fit with spacious
 X <- matrix(1, nrow=length(y), ncol=1)
 x1 <- rnorm(n+np)
+
+if (TRUE) {
+	fit.R <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="matern", fixed=list(smoothness=smooth), blocks=list(type="full"), verbose=TRUE, engine="R")
+	fit.C <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="matern", fixed=list(smoothness=smooth), blocks=list(type="full"), verbose=TRUE, engine="C")
+done
+	fit.R <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="matern", fixed=list(smoothness=smooth), blocks=list(type="regular", nblocks=6^2), verbose=TRUE, engine="R")
+	fit.C <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="matern", fixed=list(smoothness=smooth), blocks=list(type="regular", nblocks=6^2), verbose=TRUE, engine="C")
+	fit.CT <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="matern", fixed=list(smoothness=smooth), blocks=list(type="regular", nblocks=6^2), verbose=TRUE, engine="C")
+done
+}
+
+# fit with spacious
 time.spacious <- proc.time()
 #fit.spacious <- spacious(y, X, S, cov="exp", nblocks=1^2)
 #fit.spacious <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="matern", smoothness=smooth, nblocks=2^2, verbose=TRUE)

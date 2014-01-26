@@ -1,5 +1,6 @@
 // classes for working with various covariances matrices
 #include <math.h>
+#include <R.h>
 #include <Rmath.h>
 #include "covs.h"
 
@@ -212,10 +213,20 @@ CovMatern::CovMatern() {
 	mNparams = 4;
 }
 
-double CovMatern::rho(double d, double *theta) {
-	return(
-		pow(d*theta[2], theta[3]) * bessel_k(d*theta[2], theta[3], 1)/(pow(2.0, theta[3]-1.0) * gammafn(theta[3]))
-	);
+double CovMatern::rho(double d, double *theta, double *work, int partial) {
+	// bessel_k isn't thread safe, so we need to provide our own work vector to bessel_k_ex
+	double r = pow(d/theta[2], theta[3]) * bessel_k_ex(d/theta[2], theta[3]+partial, 1, work)/(pow(2.0, theta[3]-1.0) * gammafn(theta[3]));
+
+	if (r != r) r = 1;  // handle if NaN
+
+/*
+	if (r < 0) {
+		MSG("r < 0: %.4f / %.2f, %2.f, %.2f\n",
+		    r, pow(d/theta[2], theta[3]), bessel_k_ex(d/theta[2], theta[3], 1, work), pow(2.0, theta[3]-1.0) * gammafn(theta[3]) );
+	}
+*/
+
+	return(r);
 }
 
 void CovMatern::compute(double *Sigma, double *theta, int n1, double *D1,
@@ -223,6 +234,7 @@ void CovMatern::compute(double *Sigma, double *theta, int n1, double *D1,
 	int i,j;
 	int index;
 	int n = n1+n2;
+	double work[1+(long)floor(theta[3])];
 
 	for (i = 0; i < n1; i++) {
 		if (packed) { index = symi(i,i); } else { index = usymi(i,i,n); }
@@ -230,7 +242,11 @@ void CovMatern::compute(double *Sigma, double *theta, int n1, double *D1,
 
 		for (j = i+1; j < n1; j++) {
 			if (packed) { index = symi(i,j); } else { index = usymi(i,j,n); }
-			Sigma[index] = theta[1] * rho(D1[symi(i,j)], theta);
+			Sigma[index] = theta[1] * rho(D1[symi(i,j)], theta, work);
+			if (Sigma[index] != Sigma[index]) {
+				MSG("b1 nan: %.2f / %.2f, %.2f, %.2f, %.2f\n", D1[symi(i,j)], theta[0], theta[1], theta[2], theta[3]);
+				Sigma[index] = theta[1];
+			}
 		}
 	}
 
@@ -241,7 +257,11 @@ void CovMatern::compute(double *Sigma, double *theta, int n1, double *D1,
 
 			for (j = i+1; j < n2; j++) {
 				if (packed) { index = symi(i+n1,j+n1); } else { index = usymi(i+n1,j+n1,n); }
-				Sigma[index] = theta[1] * rho(D2[symi(i,j)], theta);
+				Sigma[index] = theta[1] * rho(D2[symi(i,j)], theta, work);
+				if (Sigma[index] != Sigma[index]) {
+					MSG("(%d,%d) b2 nan: %.20f / %.2f, %.2f, %.2f, %.2f\n", i, j, D2[symi(i,j)], theta[0], theta[1], theta[2], theta[3]);
+					Sigma[index] = theta[1];
+				}
 			}
 		}
 
@@ -255,6 +275,7 @@ void CovMatern::computeCross(double *Sigma, double *theta, int n1, int n2, doubl
 	int i,j;
 	int index;
 	int n = n1+n2;
+	double work[1+(long)floor(theta[3])];
 
 	if (full) {
 		// we are filling in the (n1, n2) block of Sigma
@@ -262,16 +283,20 @@ void CovMatern::computeCross(double *Sigma, double *theta, int n1, int n2, doubl
 			for (j = 0; j < n2; j++) {
 				if (packed) { index = symi(i,j+n1); } else { index = usymi(i,j+n1,n); }
 
-				if (transpose) Sigma[index] = theta[1] * rho(Dc[j + i*n2], theta);
-				else           Sigma[index] = theta[1] * rho(Dc[i + j*n1], theta);
+				if (transpose) Sigma[index] = theta[1] * rho(Dc[j + i*n2], theta, work);
+				else           Sigma[index] = theta[1] * rho(Dc[i + j*n1], theta, work);
+				if (Sigma[index] != Sigma[index]) {
+					MSG("cross nan: %.2f / %.2f, %.2f, %.2f, %.2f\n", Dc[j+i*n2], theta[0], theta[1], theta[2], theta[3]);
+					Sigma[index] = theta[1];
+				}
 			}
 		}
 	} else {
 		// we are filling in the n1 x n2 matrix Sigma that only has cross terms
 		for (i = 0; i < n1; i++) {
 			for (j = 0; j < n2; j++) {
-				if (transpose) Sigma[j + i*n2] = theta[1] * rho(Dc[j + i*n2], theta);
-				else           Sigma[i + j*n1] = theta[1] * rho(Dc[i + j*n1], theta);
+				if (transpose) Sigma[j + i*n2] = theta[1] * rho(Dc[j + i*n2], theta, work);
+				else           Sigma[i + j*n1] = theta[1] * rho(Dc[i + j*n1], theta, work);
 			}
 		}
 	}
@@ -282,6 +307,7 @@ void CovMatern::partials(double *P, bool *diag, int param, double *theta, double
 	int i,j;
 	int index;
 	int n = n1+n2;
+	double work[1+(long)floor(theta[3])];
 
 	switch(param) {
 		case 0:   // nugget
@@ -319,28 +345,13 @@ void CovMatern::partials(double *P, bool *diag, int param, double *theta, double
 			break;
 
 		case 1:   // partial sill
-/*
-theta4 <- tsmooth(theta[4])
-mid <- 2*D[in.pair,in.pair]*exp(theta[3])*sqrt(theta4)
-rho <- mid^theta4 * besselK(mid, theta4)/(2^(theta4-1) * gamma(theta4))
-rho[is.na(rho)] <- 1
-exp(theta[2])*rho
-
-		1.0/(pow(2.0, theta[3]-1.0) * gammafn(theta[3])) * pow(d/theta[2], theta[3]) * bessel_k(d/theta[2], theta[3], 1)
-*/
-
-			double mid;
-
 			for (i = 0; i < n1; i++) {
 				if (packed) { index = symi(i,i); } else { index = usymi(i,i,n); }
 				P[index] = theta[1];
 
 				for (j = i+1; j < n1; j++) {
 					if (packed) { index = symi(i,j); } else { index = usymi(i,j,n); }
-					P[index] = theta[1]*exp(-D1[symi(i,j)]/theta[2]);
-
-					mid = 2*D1[symi(i,j)]*theta[2]*sqrt(theta[3]);
-					P[index] = theta[1]*pow(mid, theta[3]) * bessel_k(mid, theta[3], 1)/( pow(2.0, theta[3]-1.0) * gammafn(theta[3]) );
+					P[index] = theta[1]*rho(D1[symi(i,j)], theta, work);
 				}
 			}
 
@@ -351,14 +362,14 @@ exp(theta[2])*rho
 
 					for (j = i+1; j < n2; j++) {
 						if (packed) { index = symi(i+n1,j+n1); } else { index = usymi(i+n1,j+n1,n); }
-						P[index] = theta[1]*exp(-D2[symi(i,j)]/theta[2]);
+						P[index] = theta[1]*rho(D2[symi(i,j)], theta, work);
 					}
 				}
 
 				for (i = 0; i < n1; i++) {
 					for (j = 0; j < n2; j++) {
 						if (packed) { index = symi(i,j+n1); } else { index = usymi(i,j+n1,n); }
-						P[index] = theta[1]*exp(-Dc[i+j*n1]/theta[2]);
+						P[index] = theta[1]*rho(Dc[i+j*n1], theta, work);
 					}
 				}
 			}
@@ -373,7 +384,7 @@ exp(theta[2])*rho
 
 				for (j = i+1; j < n1; j++) {
 					if (packed) { index = symi(i,j); } else { index = usymi(i,j,n); }
-					P[index] = -exp(thetaT[1]+thetaT[2]) * D1[symi(i,j)] * exp(-D1[symi(i,j)]/theta[2]);
+					P[index] = -theta[1]*(D1[symi(i,j)]/theta[2]) * rho(D1[symi(i,j)], theta, work, -1);
 				}
 			}
 
@@ -384,14 +395,14 @@ exp(theta[2])*rho
 
 					for (j = i+1; j < n2; j++) {
 						if (packed) { index = symi(i+n1,j+n1); } else { index = usymi(i+n1,j+n1,n); }
-						P[index] = -exp(thetaT[1]+thetaT[2]) * D2[symi(i,j)] * exp(-D2[symi(i,j)]/theta[2]);
+						P[index] = -theta[1]*(D2[symi(i,j)]/theta[2]) * rho(D2[symi(i,j)], theta, work, -1);
 					}
 				}
 
 				for (i = 0; i < n1; i++) {
 					for (j = 0; j < n2; j++) {
 						if (packed) { index = symi(i,j+n1); } else { index = usymi(i,j+n1,n); }
-						P[index] = -exp(thetaT[1]+thetaT[2]) * Dc[i+j*n1] * exp(-Dc[i+j*n1]/theta[2]);
+						P[index] = -theta[1]*(Dc[i+j*n1]/theta[2]) * rho(Dc[i+j*n1], theta, work, -1);
 					}
 				}
 			}

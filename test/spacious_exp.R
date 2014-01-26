@@ -87,10 +87,14 @@ print(fit.spacious$time)
 }
 
 if (TRUE) { # compare R vs C
-#	fit.R <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="exp", blocks=list(type="full"), verbose=TRUE, engine="R")
-#	fit.C <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="exp", blocks=list(type="full"), verbose=TRUE, engine="C")
-#done
-	#fit.R <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="exp", blocks=list(type="regular", nblocks=6^2), verbose=TRUE, engine="R")
+	#fit.R <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="exp", blocks=list(type="full"), verbose=TRUE, engine="R")
+	fit.C <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="exp", blocks=list(type="full"), verbose=TRUE, engine="C")
+	fit.CG <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="exp", blocks=list(type="full"), verbose=TRUE, engine="C", gpu=TRUE)
+done
+	fit.R <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="exp", blocks=list(type="regular", nblocks=6^2), verbose=TRUE, engine="R")
+	fit.C <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="exp", blocks=list(type="regular", nblocks=6^2), verbose=TRUE, nthreads=4, engine="C")
+	fit.CT <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="exp", blocks=list(type="regular", nblocks=6^2), verbose=TRUE, nthreads=4, engine="C")
+done
 	#fit.R <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="matern", fixed=list(smoothness=1/2), blocks=list(type="regular", nblocks=6^2), verbose=TRUE, engine="R")
 	#fit.R <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="matern", fixed=list(smoothness=3/2), blocks=list(type="regular", nblocks=6^2), verbose=TRUE, engine="R")
 	#fit.R <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="matern", fixed=list(smoothness=5/2), blocks=list(type="regular", nblocks=6^2), verbose=TRUE, engine="R")
@@ -99,8 +103,10 @@ if (TRUE) { # compare R vs C
 	#fit.R <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="matern", fixed=list(smoothness=11/2), blocks=list(type="regular", nblocks=6^2), verbose=TRUE, engine="R")
 	#fit.R <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="matern", fixed=list(smoothness=13/2), blocks=list(type="regular", nblocks=6^2), verbose=TRUE, engine="R")
 #done
-	fit.CE <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="exp", blocks=list(type="regular", nblocks=6^2), verbose=TRUE, engine="C", nthreads=4)
-	#fit.CM <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="matern", blocks=list(type="regular", nblocks=6^2), verbose=TRUE, engine="C")
+	#fit.CE <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="exp", blocks=list(type="regular", nblocks=6^2), verbose=TRUE, engine="C", nthreads=4)
+	#fit.CM <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="matern", blocks=list(type="regular", nblocks=6^2), verbose=TRUE, engine="C", nthreads=4)
+	#fit.RE <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="exp", blocks=list(type="regular", nblocks=6^2), verbose=TRUE, engine="R")
+	#fit.RM <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="matern", blocks=list(type="regular", nblocks=6^2), verbose=TRUE, engine="R")
 done
 	preds.R <- predict(fit.R, newdata=data.frame(x2=x1[(n+1):(n+np)]), newS=S[(n+1):(n+np),], interval="prediction", level=0.9)
 	preds.C <- predict(fit.C, newdata=data.frame(x2=x1[(n+1):(n+np)]), newS=S[(n+1):(n+np),], interval="prediction", level=0.9)

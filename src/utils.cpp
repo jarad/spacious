@@ -12,7 +12,7 @@ int chol2inv(int n, double *A, bool do_log_det, double *log_det) {
 	// compute factorization
 	dpotrf_(&uplo, &n, A, &n, &info);
 	if (info) {
-//		MSG("Error with chol(A): info = %d\n", info);
+		MSG("Error with chol(A): info = %d\n", info);
 		return(info);
 	}
 
@@ -29,7 +29,7 @@ int chol2inv(int n, double *A, bool do_log_det, double *log_det) {
 	// complete inverse
 	dpotri_(&uplo, &n, A, &n, &info);
 	if (info) {
-//		MSG("Error with inv(chol(A)): info = %d\n", info);
+		MSG("Error with inv(chol(A)): info = %d\n", info);
 		return(info);
 	}
 

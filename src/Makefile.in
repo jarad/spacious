@@ -5,12 +5,13 @@ CXX = @CXX@
 OBJS = BlockComp.o covs.o utils.o spacious_fit.o @CUDA_OBJS@
 
 # compile flags
-CFLAGS    = -Wall @CFLAGS@
-CXXFLAGS  = -Wall @CXXFLAGS@
-CPPFLAGS  = @CPPFLAGS@
-CPICFLAGS = @CPICFLAGS@
-INC       = @INC@
-FEATURES  = @FEATURES@
+CFLAGS      = -Wall @CFLAGS@
+CXXFLAGS    = -Wall @CXXFLAGS@
+CPPFLAGS    = @CPPFLAGS@
+CPICFLAGS   = @CPICFLAGS@
+CXXPICFLAGS = @CXXPICFLAGS@
+INC         = @INC@
+FEATURES    = @FEATURES@
 
 # link flags
 LDFLAGS = @LDFLAGS@ @BLAS_LIBS@ @LAPACK_LIBS@ @PTHREAD_LIBS@
@@ -26,7 +27,7 @@ $(TARGETS): $(OBJS)
 	$(CXX) -shared $(LDFLAGS) $(OBJS) -o $@
 
 %.o: %.cpp
-	$(CXX) -c $(CPICFLAGS) $(CXXFLAGS) $(CPPFLAGS) $(INC) $(FEATURES) $^ -o $@
+	$(CXX) -c $(CXXPICFLAGS) $(CXXFLAGS) $(CPPFLAGS) $(INC) $(FEATURES) $^ -o $@
 
 %.o: %.cu
 	$(NVCC) -c $(INC) $(FEATURES) $^ -o $@

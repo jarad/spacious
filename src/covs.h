@@ -70,7 +70,7 @@ public:
 	virtual void transformFromReal(double *theta);
 
 private:
-	double rho(double d, double *theta);  // correlation based on distance d and parameters theta
+	double rho(double d, double *theta, double *work, int partial=0);  // correlation based on distance d and parameters theta
 };
 
 #endif

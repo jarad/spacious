@@ -14,7 +14,7 @@ void spacious_fit(
 	// type of model to fit
 	char **lik_form, char **cov,
 	// parameter estimates and convergence info
-	double *theta, bool *theta_fixed, double *beta,
+	double *theta, int *theta_fixed, double *beta,
 	bool *convergence, int *nIter,
 	// standard errors
 	double *se_beta, double *se_theta,
@@ -41,8 +41,9 @@ void spacious_fit(
 	} else if (strcmp(lik_form[0], "pair") == 0) {
 		blk->setLikForm(BlockComp::Pair);
 	} else {
-		delete blk;
 		error("Unknown likelihood form: %s\n", lik_form[0]);
+
+		delete blk;
 		return;
 	}
 
@@ -52,8 +53,9 @@ void spacious_fit(
 	} else if (strcmp(cov[0], "matern") == 0) {
 		blk->setCovType(BlockComp::Matern);
 	} else {
-		delete blk;
 		error("Unknown covariance type: %s\n", cov[0]);
+
+		delete blk;
 		return;
 	}
 
@@ -64,7 +66,9 @@ void spacious_fit(
 	blk->setInits(theta);
 
 	// set fixed parameters
-	blk->setFixed(theta_fixed, theta);
+	bool isFixed[blk->getNumTheta()];
+	for (int i = 0; i < blk->getNumTheta(); i++) { if (theta_fixed[i] == 1) isFixed[i] = true; else isFixed[i] = false; }
+	blk->setFixed(isFixed, theta);
 
 	// set tolerance
 	blk->setTol(*tol);
@@ -74,9 +78,9 @@ void spacious_fit(
 
 	// fit!
 	if (!blk->fit(verbose[0])) {
-		delete blk;
-
 		error("Error with fit.\n");
+
+		delete blk;
 		return;
 	}
 
@@ -93,7 +97,6 @@ void spacious_fit(
 	blk->getResiduals(resids);
 
 	delete blk;
-
 	return;
 }
 

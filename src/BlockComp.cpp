@@ -4,6 +4,7 @@
 #include <time.h>
 
 #include <R.h>
+#include <Rmath.h>
 
 #include "BlockComp.h"
 #include "covs.h"
@@ -298,10 +299,11 @@ void BlockComp::setCovType(CovType type) {
 	mThetaInits = NULL;
 
 	// default to no fixed parameters
-	bool   fixed[mCov->numParams()];
-	double values[mCov->numParams()];
+	mNtheta = mCov->numParams();
+	bool   fixed[mNtheta];
+	double values[mNtheta];
 
-	for (int i = 0; i < mCov->numParams(); i++) {
+	for (int i = 0; i < mNtheta; i++) {
 		fixed[i]  = false;
 		values[i] = 0;
 	}
@@ -342,6 +344,7 @@ bool BlockComp::setData(int n, double *y, double *S, int nblocks, int *B, int p,
 	if (mLikForm == Block) {
 		// compute number of observations in each block
 		mNB = (int *)malloc(sizeof(int)*mNblocks);
+		if (mNB == NULL) { MSG("Unable to allocate space for mNB\n"); return(false); }
 		for (i = 0; i < mNblocks; i++) { mNB[i] = 0; }
 
 		for (i = 0; i < mN; i++) {
@@ -352,6 +355,7 @@ bool BlockComp::setData(int n, double *y, double *S, int nblocks, int *B, int p,
 		if (mNthreads > 1) {
 			// set order based on number of obs in each block
 			mOrderPairs = (int *)malloc(sizeof(int)*mNpairs);
+			if (mOrderPairs == NULL) { MSG("Unable to allocate space for mOrderPairs\n"); return(false); }
 
 			// structure to hold IDs and values
 			st_int tmpOrder[mNpairs];
@@ -381,8 +385,10 @@ bool BlockComp::setData(int n, double *y, double *S, int nblocks, int *B, int p,
 
 		// save indicies for each block for easy access
 		mWhichB = (int **)malloc(sizeof(int *)*mNblocks);
+		if (mWhichB == NULL) { MSG("Unable to allocate space for mWhichB\n"); return(false); }
 		for (i = 0; i < mNblocks; i++) {
 			mWhichB[i] = (int *)malloc(sizeof(int)*mNB[i]);
+			if (mWhichB[i] == NULL) { MSG("Unable to allocate space for mWhichB[%d]\n", i); return(false); }
 		}
 
 		// temporarily keep track of locations for mWhichB
@@ -401,8 +407,10 @@ bool BlockComp::setData(int n, double *y, double *S, int nblocks, int *B, int p,
 
 	// allocate largest Sigma we need
 	mSigma = (double **)malloc(sizeof(double *)*mNthreads);
+	if (mSigma == NULL) { MSG("Unable to allocate space for mSigma\n"); return(false); }
 	for (i = 0; i < mNthreads; i++) {
 		mSigma[i] = (double *)malloc(sizeof(double)*mMaxPair*mMaxPair);
+		if (mSigma[i] == NULL) { MSG("Unable to allocate space for mSigma[%d]\n", i); return(false); }
 
 		for (j = 0; j < mMaxPair*mMaxPair; j++) { mSigma[i][j] = 0; }
 
@@ -426,8 +434,10 @@ bool BlockComp::setData(int n, double *y, double *S, int nblocks, int *B, int p,
 		if (mLikForm == Block) {
 			// ... within blocks
 			mWithinD = (double **)malloc(sizeof(double *)*mNblocks);
+			if (mWithinD == NULL) { MSG("Unable to allocate space for mWithinD\n"); return(false); }
 			for (i = 0; i < mNblocks; i++) {
 				mWithinD[i] = (double *)malloc(sizeof(double)*symi(0, mNB[i]));
+				if (mWithinD[i] == NULL) { MSG("Unable to allocate space for mWithinD[%d]\n", i); return(false); }
 			}
 
 			for (i = 0; i < mNblocks; i++) {
@@ -444,8 +454,10 @@ bool BlockComp::setData(int n, double *y, double *S, int nblocks, int *B, int p,
 
 			// ... between blocks
 			mBetweenD = (double **)malloc(sizeof(double *)*mNpairs);
+			if (mBetweenD == NULL) { MSG("Unable to allocate space for mBetweenD\n"); return(false); }
 			for (i = 0; i < mNpairs; i++) {
 				mBetweenD[i] = (double *)malloc(sizeof(double)* mNB[mNeighbors[i]]*mNB[mNeighbors[i+mNpairs]]);
+				if (mBetweenD[i] == NULL) { MSG("Unable to allocate space for mBetweenD[%d]\n", i); return(false); }
 			}
 
 			for (i = 0; i < mNpairs; i++) {
@@ -467,7 +479,9 @@ bool BlockComp::setData(int n, double *y, double *S, int nblocks, int *B, int p,
 		} else if (mLikForm == Full || mLikForm == Pair) {
 			// we need distances between all points for Full and Pair
 			mWithinD    = (double **)malloc(sizeof(double *));
+			if (mWithinD == NULL) { MSG("Unable to allocate space for mWithinD\n"); return(false); }
 			mWithinD[0] = (double *)malloc(sizeof(double)*symi(0, mN));
+			if (mWithinD[0] == NULL) { MSG("Unable to allocate space for mWithinD[%d]\n", 0); return(false); }
 
 			computeWithinDistance(mN, mS, mWithinD[0]);
 		}
@@ -505,8 +519,9 @@ void BlockComp::computeBetweenDistance(int n1, const double *S1, int n2, const d
 void BlockComp::setInits(double *theta) {
 	free(mThetaInits);
 
-	mThetaInits = (double *)malloc(sizeof(double)*mCov->numParams());
-	for (int i = 0; i < mCov->numParams(); i++) {
+	mThetaInits = (double *)malloc(sizeof(double)*mNtheta);
+	if (mThetaInits == NULL) { MSG("Unable to allocate space for mThetaInits\n"); return; }
+	for (int i = 0; i < mNtheta; i++) {
 		mThetaInits[i] = theta[i];
 	}
 }
@@ -519,11 +534,13 @@ void BlockComp::setFixed(bool *fixed, double *values) {
 	free(mFixed);
 	free(mFixedVals);
 
-	mFixed     = (bool *)malloc(sizeof(bool)*mCov->numParams());
-	mFixedVals = (double *)malloc(sizeof(double)*mCov->numParams());
+	mFixed     = (bool *)malloc(sizeof(bool)*mNtheta);
+	if (mFixed == NULL) { MSG("Unable to allocate space for mFixed\n"); return; }
+	mFixedVals = (double *)malloc(sizeof(double)*mNtheta);
+	if (mFixedVals == NULL) { MSG("Unable to allocate space for mFixedVals\n"); return; }
 
 	mNfixed = 0;
-	for (int i = 0; i < mCov->numParams(); i++) {
+	for (int i = 0; i < mNtheta; i++) {
 		mFixed[i]     = fixed[i];
 		mFixedVals[i] = values[i];
 
@@ -857,7 +874,9 @@ bool BlockComp::fit(bool verbose) {
 	free(mResids);
 	free(mFitted);
 	mResids = (double *)malloc(sizeof(double)*mN);
+	if (mResids == NULL) { MSG("Unable to allocate space for mResids\n"); return(false); }
 	mFitted = (double *)malloc(sizeof(double)*mN);
+	if (mFitted == NULL) { MSG("Unable to allocate space for mFitted\n"); return(false); }
 
 	// make sure we have initial values
 	if (mThetaInits == NULL) {
@@ -872,7 +891,9 @@ bool BlockComp::fit(bool verbose) {
 	free(mTheta);
 	free(mThetaT);
 	mTheta  = (double *)malloc(sizeof(double) * mNtheta);
+	if (mTheta == NULL) { MSG("Unable to allocate space for mTheta\n"); return(false); }
 	mThetaT = (double *)malloc(sizeof(double) * mNtheta);
+	if (mThetaT == NULL) { MSG("Unable to allocate space for mThetaT\n"); return(false); }
 
 	// set initial theta and transform
 	for (i = 0; i < mNtheta; i++) {
@@ -890,8 +911,11 @@ bool BlockComp::fit(bool verbose) {
 	free(mBeta_A);
 	free(mBeta_b);
 	mBeta   = (double *)malloc(sizeof(double)*mNbeta);
+	if (mBeta == NULL) { MSG("Unable to allocate space for mBeta\n"); return(false); }
 	mBeta_A = (double *)malloc(sizeof(double)*mNbeta*mNbeta);
+	if (mBeta_A == NULL) { MSG("Unable to allocate space for mBeta_A\n"); return(false); }
 	mBeta_b = (double *)malloc(sizeof(double)*mNbeta);
+	if (mBeta_b == NULL) { MSG("Unable to allocate space for mBeta_b\n"); return(false); }
 
 	// prepare variables for updating theta
 	if (mTheta_W != NULL) {
@@ -903,10 +927,14 @@ bool BlockComp::fit(bool verbose) {
 	free(mTheta_H);
 	free(mTheta_P);
 	mTheta_W = (double **)malloc(sizeof(double *)*mNtheta);
+	if (mTheta_W == NULL) { MSG("Unable to allocate space for mTheta_W\n"); return(false); }
 	mTheta_H = (double *)malloc(sizeof(double)*mNtheta*mNtheta);
+	if (mTheta_H == NULL) { MSG("Unable to allocate space for mTheta_H\n"); return(false); }
 	mTheta_P = (double *)malloc(sizeof(double)*mMaxPair*mMaxPair);
+	if (mTheta_P == NULL) { MSG("Unable to allocate space for mTheta_P\n"); return(false); }
 	for (i = 0; i < mNtheta; i++) {
 		mTheta_W[i] = (double *)malloc(sizeof(double)*mMaxPair*mMaxPair);
+		if (mTheta_W[i] == NULL) { MSG("Unable to allocate space for mTheta_W[%d]\n", i); return(false); }
 	}
 
 	// prepare where to save at each iteration
@@ -914,8 +942,11 @@ bool BlockComp::fit(bool verbose) {
 	free(mIterTheta);
 	free(mIterLogLik);
 	mIterBeta   = (double *)malloc(sizeof(double)*mNbeta*(mMaxIter+1));
+	if (mIterBeta == NULL) { MSG("Unable to allocate space for mIterBeta\n"); return(false); }
 	mIterTheta  = (double *)malloc(sizeof(double)*mNtheta*(mMaxIter+1));
+	if (mIterTheta == NULL) { MSG("Unable to allocate space for mIterTheta\n"); return(false); }
 	mIterLogLik = (double *)malloc(sizeof(double)*(mMaxIter+1));
+	if (mIterLogLik == NULL) { MSG("Unable to allocate space for mIterLogLik\n"); return(false); }
 
 #ifdef PTHREAD
 	free(mThreads);
@@ -928,7 +959,9 @@ bool BlockComp::fit(bool verbose) {
 
 		// allocate space for threads
 		mThreads      = (pthread_t *)malloc(sizeof(pthread_t)*mNthreads);
+		if (mThreads == NULL) { MSG("Unable to allocate space for mThreads\n"); return(false); }
 		mThreadStatus = (bool *)malloc(sizeof(bool)*mNthreads);
+		if (mThreadStatus == NULL) { MSG("Unable to allocate space for mThreadStatus\n"); return(false); }
 
 		// allocate thread work
 		if (mThreadWork != NULL) {
@@ -939,8 +972,10 @@ bool BlockComp::fit(bool verbose) {
 		free(mThreadWork);
 
 		mThreadWork = (pair_update_t **)malloc(sizeof(pair_update_t *)*mNthreads);
+		if (mThreadWork == NULL) { MSG("Unable to allocate space for mThreadWork\n"); return(false); }
 		for (i = 0; i < mNthreads; i++) {
 			mThreadWork[i] = (pair_update_t *)malloc(sizeof(pair_update_t));
+			if (mThreadWork[i] == NULL) { MSG("Unable to allocate space for mThreadWork[%d]\n", i); return(false); }
 		}
 
 		// allocate update variables specific to each thread
@@ -954,10 +989,14 @@ bool BlockComp::fit(bool verbose) {
 		free(mBeta_b_t);
 
 		mBeta_A_t = (double **)malloc(sizeof(double *)*mNthreads);
+		if (mBeta_A_t == NULL) { MSG("Unable to allocate space for mBeta_A_t\n"); return(false); }
 		mBeta_b_t = (double **)malloc(sizeof(double *)*mNthreads);
+		if (mBeta_b_t == NULL) { MSG("Unable to allocate space for mBeta_b_t\n"); return(false); }
 		for (i = 0; i < mNthreads; i++) {
 			mBeta_A_t[i] = (double *)malloc(sizeof(double)*mNbeta*mNbeta);
+			if (mBeta_A_t[i] == NULL) { MSG("Unable to allocate space for mBeta_A_t[%d]\n", i); return(false); }
 			mBeta_b_t[i] = (double *)malloc(sizeof(double)*mNbeta);
+			if (mBeta_b_t[i] == NULL) { MSG("Unable to allocate space for mBeta_b_t[%d]\n", i); return(false); }
 		}
 
 		if (mTheta_W_t != NULL && mTheta_H_t != NULL && mTheta_P_t && mTheta_u_t) {
@@ -982,7 +1021,7 @@ bool BlockComp::fit(bool verbose) {
 		mTheta_P_t = (double **)malloc(sizeof(double *)*mNthreads);
 		mTheta_u_t = (double **)malloc(sizeof(double *)*mNthreads);
 		for (i = 0; i < mNthreads; i++) {
-			mTheta_W_t[i] = (double **)malloc(sizeof(double)*mNtheta);
+			mTheta_W_t[i] = (double **)malloc(sizeof(double *)*mNtheta);
 			for (int j = 0; j < mNtheta; j++) {
 				mTheta_W_t[i][j] = (double *)malloc(sizeof(double)*mMaxPair*mMaxPair);
 			}
@@ -2716,7 +2755,8 @@ void test_bc(BlockComp::LikForm lf, int nthreads, bool gpu) {
 	//blk.setLikForm(BlockComp::Block);
 	//blk.setLikForm(BlockComp::Full);
 	blk.setLikForm(lf);
-	blk.setCovType(BlockComp::Exp);
+	//blk.setCovType(BlockComp::Exp);
+	blk.setCovType(BlockComp::Matern);
 
 	if (!blk.setData(test_n, test_y, test_S, test_nblocks, test_B, test_p, test_X, test_npairs, test_neighbors)) {
 		MSG("Error allocating data for fit.\n");
@@ -2726,10 +2766,14 @@ void test_bc(BlockComp::LikForm lf, int nthreads, bool gpu) {
 
 	//double inits[] = {0.25, 0.25, 0.5};
 	//double inits[] = {0.5, 0.7243848, 0.2105263};
-	bool fixed[] = {false, false, false};
-	double vals[] = {0.5, 0.4, 0.15};
+	//bool fixed[] = {false, false, false};
+	//double vals[] = {0.5, 0.4, 0.15};
+	bool fixed[] = {false, false, false, true};
+	double vals[] = {0.5, 0.4, 0.15, 0.5};
 
-	blk.setInits(test_inits);
+	double inits[] = {test_inits[0], test_inits[1], test_inits[2], 0.5};
+
+	blk.setInits(inits);
 	blk.setFixed(fixed, vals);
 
 	if (!blk.fit(true)) {
@@ -2827,8 +2871,6 @@ int main(void) {
 	MSG("--> Done (%.2fsec)\n", (double)(clock() - t1)/CLOCKS_PER_SEC);
 */
 
-/*
-*/
 	MSG("CPU blocks, no threads\n");
 	t1 = clock();
 	test_bc(BlockComp::Block, 1, false);
@@ -2838,6 +2880,8 @@ int main(void) {
 	t1 = clock();
 	test_bc(BlockComp::Block, 4, false);
 	MSG("--> Done (%.2fsec)\n", (double)(clock() - t1)/CLOCKS_PER_SEC);
+/*
+*/
 
 /*
 	st_int i1,i2,i3;

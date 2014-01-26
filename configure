@@ -610,6 +610,7 @@ PTHREAD_LIBS
 LAPACK_LIBS
 BLAS_LIBS
 INC
+CXXPICFLAGS
 CPICFLAGS
 R_HOME
 ac_ct_CXX
@@ -2108,6 +2109,7 @@ CFLAGS=`"${R_HOME}/bin/R" CMD config CFLAGS`
 CPICFLAGS=`"${R_HOME}/bin/R" CMD config CPICFLAGS`
 CPPFLAGS=`"${R_HOME}/bin/R" CMD config CPPFLAGS`
 CXXFLAGS=`"${R_HOME}/bin/R" CMD config CXXFLAGS`
+CXXPICFLAGS=`"${R_HOME}/bin/R" CMD config CXXPICFLAGS`
 LDFLAGS=`"${R_HOME}/bin/R" CMD config LDFLAGS`
 BLAS_LIBS=`"${R_HOME}/bin/R" CMD config BLAS_LIBS`
 LAPACK_LIBS=`"${R_HOME}/bin/R" CMD config LAPACK_LIBS`
@@ -4179,6 +4181,7 @@ if test "${with_cuda+set}" = set; then :
 			CUDA_OBJS="utils_cuda.o utils_cuda_kernels.o"
 
 fi
+
 
 
 

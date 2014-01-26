@@ -25,7 +25,7 @@
 "matern_rho_u" <- function(theta, D) {
 #print(c(exp(-theta[3]), exp(theta[4])))
 #print(c( (D / exp(-theta[3]))^(exp(theta[4])), besselK(D/exp(-theta[3]), exp(theta[4])), ( 2^(exp(theta[4])-1) * gamma(exp(theta[4])) ) ))
-	rho <- (D/exp(-theta[3]))^(exp(theta[4])) * besselK(D/exp(-theta[3]), exp(theta[4]))/( 2^(exp(theta[4])-1) * gamma(exp(theta[4])) )
+	rho <- (D*exp(theta[3]))^(exp(theta[4])) * besselK(D*exp(theta[3]), exp(theta[4]))/( 2^(exp(theta[4])-1) * gamma(exp(theta[4])) )
 	rho[is.na(rho)] <- 1
 
 	rho
@@ -36,7 +36,7 @@
 	if (param == 1) {
 		return(0);
 	} else if (param == 1) {
-		return(matern_rho(theta, D));
+		return(matern_rho_u(theta, D));
 	} else if (param == 2) {
 		rho <- (D/theta[3])^(theta[4]) * besselK(D/theta[3], theta[4])/( 2^(theta[4]-1) * gamma(theta[4]))
 		rho[is.na(rho)] <- 1

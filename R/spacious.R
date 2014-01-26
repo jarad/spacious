@@ -201,7 +201,7 @@
 	t1 <- proc.time()
 	if (engine == "C") {
 		if (nthreads <= 0) {
-			warning(paste0("nthreads specified as ",nthreads,". Using 1 instead."))
+			warning(paste0("nthreads specified as ",nthreads,". Using nthreads=1 instead."))
 			nthreads <- 1
 		}
 
@@ -212,7 +212,7 @@
 		          # type of model to fit
 		          lik_form=as.character(lik_form), cov=as.character(cov),
 		          # parameter estimates and convergence info
-		          theta=as.double(theta), theta_fixed=as.logical(theta_fixed), beta=as.double(rep(0, p)),
+		          theta=as.double(theta), theta_fixed=as.integer(theta_fixed), beta=as.double(rep(0, p)),
 		          convergence=as.logical(FALSE), nIter=as.integer(0),
 		          # standard errors
 		          se_beta=as.double(rep(NA, p)), se_theta=as.double(rep(NA, R)),
