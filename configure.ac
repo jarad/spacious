@@ -47,6 +47,8 @@ AC_CHECK_LIB(pthread, pthread_create, [
 ])
 
 # cuda support
+CUDA_BS="256"      # default block size
+
 AC_ARG_WITH([cuda],
 	AC_HELP_STRING([--with-cuda=DIR],
 		[cuda root [/usr/local/cuda]]),
@@ -60,6 +62,16 @@ AC_ARG_WITH([cuda],
 			INC="${INC} -I${CUDA}/include"
 			FEATURES="$FEATURES -DCUDA"
 			CUDA_OBJS="utils_cuda.o utils_cuda_kernels.o"
+		])
+
+AC_ARG_WITH([CUDA_BS],
+	AC_HELP_STRING([--with-CUDA_BS=SIZE],
+		[cuda block size [256]]),
+		[
+			CUDA_BS="$withval"
+			if test x"$CUDA_BS" = xyes; then
+				CUDA_BS="256"
+			fi
 		])
 
 AC_SUBST(CC)
@@ -76,6 +88,7 @@ AC_SUBST(BLAS_LIBS)
 AC_SUBST(LAPACK_LIBS)
 AC_SUBST(PTHREAD_LIBS)
 AC_SUBST(CUDA)
+AC_SUBST(CUDA_BS)
 AC_SUBST(CUDA_OBJS)
 AC_SUBST(FEATURES)
 

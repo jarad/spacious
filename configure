@@ -605,6 +605,7 @@ ac_subst_vars='LTLIBOBJS
 LIBOBJS
 FEATURES
 CUDA_OBJS
+CUDA_BS
 CUDA
 PTHREAD_LIBS
 LAPACK_LIBS
@@ -668,6 +669,7 @@ ac_subst_files=''
 ac_user_opts='
 enable_option_checking
 with_cuda
+with_CUDA_BS
 '
       ac_precious_vars='build_alias
 host_alias
@@ -1292,6 +1294,7 @@ Optional Packages:
   --with-PACKAGE[=ARG]    use PACKAGE [ARG=yes]
   --without-PACKAGE       do not use PACKAGE (same as --with-PACKAGE=no)
   --with-cuda=DIR         cuda root [/usr/local/cuda]
+  --with-CUDA_BS=SIZE     cuda block size [256]
 
 Some influential environment variables:
   CC          C compiler command
@@ -4166,6 +4169,8 @@ fi
 
 
 # cuda support
+CUDA_BS="256"      # default block size
+
 
 # Check whether --with-cuda was given.
 if test "${with_cuda+set}" = set; then :
@@ -4181,6 +4186,19 @@ if test "${with_cuda+set}" = set; then :
 			CUDA_OBJS="utils_cuda.o utils_cuda_kernels.o"
 
 fi
+
+
+
+# Check whether --with-CUDA_BS was given.
+if test "${with_CUDA_BS+set}" = set; then :
+  withval=$with_CUDA_BS;
+			CUDA_BS="$withval"
+			if test x"$CUDA_BS" = xyes; then
+				CUDA_BS="256"
+			fi
+
+fi
+
 
 
 

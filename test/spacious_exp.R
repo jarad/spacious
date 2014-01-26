@@ -63,7 +63,7 @@ for (i in 1:500) {
 done
 }
 
-if (FALSE) { # GPU vs not
+if (TRUE) { # GPU vs not
 fit.spacious <- spacious(y~x, data=data.frame(y=y[1:n], x=x1[1:n]), S=S[1:n,], cov="exp", blocks=list(type="full"), nthreads=1, gpu=TRUE, verbose=TRUE)
 print(fit.spacious$time)
 

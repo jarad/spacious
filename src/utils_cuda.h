@@ -1,10 +1,6 @@
 #ifndef UTILS_CUDA_H
 #define UTILS_CUDA_H
 
-#ifndef CUDA_BS
-#define CUDA_BS 256
-#endif
-
 // function definitions
 void cuda_devices();
 int  cuda_chol2inv(cublasHandle_t handle, int n, double *A, bool do_log_det=false, double *log_det=NULL);
