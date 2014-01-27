@@ -7,9 +7,10 @@
 #include "utils_cuda.h"
 
 void cuda_log_det(double *v, double *A, int n) {
-	int b = ceil((double)n/CUDA_BS);
+	int bs = cuda_block_size();
+	int b = ceil((double)n/bs);
 //printf("b=%d\n", b);
-	cuda_log_det_k<<<ceil((double)n/CUDA_BS), CUDA_BS>>>(v, A, n);
+	cuda_log_det_k<<<ceil((double)n/bs), bs>>>(v, A, n);
 }
 
 __global__ void cuda_log_det_k(double *v, double *A, int n) {
