@@ -10,8 +10,9 @@
 	partial.sill <- 0.5*vg$v[1]/exp(-vg$u[1]/range)
 	nugget       <- vg$var.mark-partial.sill
 
-	# make sure initial nugget isn't too small
-	nugget <- max(nugget, 0.05)
+	# make sure initial nugget and partial still aren't too small
+	nugget       <- max(nugget, 0.05)
+	partial.sill <- max(partial.sill, 0.05)
 
 	smoothness <- 0.5
 
