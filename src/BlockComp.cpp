@@ -2729,7 +2729,7 @@ void BlockComp::getBetaIter(double *beta) {
 
 	for (int i = 0; i < mNbeta; i++)
 		for (int j = 0; j < (mIters+1); j++)
-			beta[i + j*mNbeta] = mIterBeta[i + j*mNbeta];
+			beta[j + i*(mIters+1)] = mIterBeta[i + j*mNbeta];
 }
 
 /*
@@ -2749,7 +2749,7 @@ void BlockComp::getThetaIter(double *theta) {
 
 	for (int i = 0; i < mNtheta; i++)
 		for (int j = 0; j < (mIters+1); j++)
-			theta[i + j*mNtheta] = mIterTheta[i + j*mNtheta];
+			theta[j + i*(mIters+1)] = mIterTheta[i + j*mNtheta];
 }
 
 void BlockComp::getLogLikIter(double *log_lik) {

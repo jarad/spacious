@@ -220,7 +220,7 @@
 		          # fitted values and residuals
 		          fitted=as.double(rep(0, n)), resids=as.double(rep(0, n)),
 		          # values of theta and log likelihood at each iteration
-		          iters_theta=as.double(rep(NA, maxIter)), iters_ll=as.double(rep(NA, maxIter)),
+		          iters_theta=as.double(rep(NA, (maxIter+1)*R)), iters_ll=as.double(rep(NA, maxIter+1)),
 		          # fitting control parameters
 		          verbose=as.logical(verbose), tol=as.double(tol), max_iter=as.integer(maxIter), compute_se=as.logical(compute_se),
 		          # parallelization options
@@ -235,6 +235,10 @@
 		fit$n <- NULL
 		fit$p <- NULL
 		fit$npairs <- NULL
+
+		fit$ll <- fit$iters_ll[fit$nIter+1]
+		fit$iters_ll <- fit$iters_ll[1:(fit$nIter+1)]
+		fit$iters_theta <- matrix(fit$iters_theta[1:( (fit$nIter+1)*R )], nrow=(fit$nIter+1), ncol=R)
 	} else if (engine == "R") {
 		fit <- spacious.fit(y, X, S, blocks$nblocks, B, neighbors, cov, n, p, R, theta, theta_fixed,
 			verbose, tol, maxIter)

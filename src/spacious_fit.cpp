@@ -88,6 +88,10 @@ void spacious_fit(
 	blk->getBeta(beta);
 	blk->getTheta(theta);
 
+	//blk->getBetaIter(iterBeta);
+	blk->getThetaIter(iters_theta);
+	blk->getLogLikIter(iters_ll);
+
 	// get convergence info
 	convergence[0] = blk->getConverged();
 	nIter[0]       = blk->getIters();

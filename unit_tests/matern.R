@@ -1,47 +1,53 @@
-if ("package:spacious" %in% search()) {
-  # unload the package
-  detach("package:spacious", unload=TRUE)
-}
-
-require(spacious)
-require(testthat)
-
 # test matern fitting
-test_that("simple matern", {
+library(spacious)
+library(testthat)
+source("custom.R")
 
-	set.seed(311)
+# simulate matern data
+set.seed(311)
+n <- 512
+S <- matrix(runif(n*2), n, 2)
+D <- rdist(S); diag(D) <- 0
+smooth <- 3.50
+Sigma <- 0.5 * diag(n) + 0.5*matern(D, 0.15, smooth)
+y <- mvrnorm(1, rep(5,n), Sigma)
 
-	# generate data
-	n <- 250
-	np <- 5
+test_that("full matern converges", {
+	fit <- spacious(y~1, S=S, cov="matern", fixed=list(smoothness=smooth), blocks=list(type="regular", nblocks=0))
+	expect_equal(fit$conv, TRUE)
+})
 
-	S <- cbind(runif(n+np), runif(n+np))
-	D <- rdist(S); diag(D) <- 0
+test_that("block matern converges", {
+	fit <- spacious(y~1, S=S, cov="matern", fixed=list(smoothness=smooth), blocks=list(type="regular", nblocks=2^2))
+	expect_equal(fit$conv, TRUE)
+})
 
-	# matern covariance function parameters
-	nugget <- 0.5
-	tau2 <- 0.5
-	range <- 0.25
-	smooth <- 3.50  # 0.5 = exponential cov
-	mu <- 5
-	Sigma <- nugget * diag(n+np) + tau2 * matern(D, range, smooth)
+test_that("matern threads equals non-threads", {
+	fit.N <- spacious(y~1, S=S, cov="matern", fixed=list(smoothness=smooth), blocks=list(type="regular", nblocks=2^2), nthreads=1)
+	fit.T <- spacious(y~1, S=S, cov="matern", fixed=list(smoothness=smooth), blocks=list(type="regular", nblocks=2^2), nthreads=2)
+	expect_equal(fit.N$ll, fit.T$ll)
+})
 
-	y <- mvrnorm(1, mu=rep(mu, n+np), Sigma=Sigma)
+test_that("matern gpu equals non-gpu", {
+	fit.N <- spacious(y~1, S=S, cov="matern", fixed=list(smoothness=smooth), blocks=list(type="full"), gpu=FALSE)
+	fit.G <- spacious(y~1, S=S, cov="matern", fixed=list(smoothness=smooth), blocks=list(type="full"), gpu=TRUE)
+	expect_equal(fit.N$ll, fit.G$ll)
+})
 
-	X <- matrix(1, nrow=length(y), ncol=1)
-	x1 <- rnorm(n+np)
+test_that("matern full engine is the same in R and C++", {
+	fit.R <- spacious(y~1, S=S, cov="matern", fixed=list(smoothness=smooth), blocks=list(type="full"), engine="R")
+	fit.C <- spacious(y~1, S=S, cov="matern", fixed=list(smoothness=smooth), blocks=list(type="full"), engine="C")
+	expect_that(fit.R$ll, is_close(fit.C$ll))
+})
 
-	# full
-	fit <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="matern",
-		fixed=list(smoothness=smooth), blocks=list(type="regular", nblocks=0))
-	summary(fit)
-	predict(fit, newdata=data.frame(x2=x1[(n+1):(n+np)]), newS=S[(n+1):(n+np),], interval="prediction")
-	predict(fit, newdata=data.frame(x2=x1[(n+1):(n+np)]), newS=S[(n+1):(n+np),], interval="prediction", opts=list(type="local", num=5))
-	# blocks
-	fit <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="matern",
-		fixed=list(smoothness=smooth), blocks=list(type="regular", nblocks=2^2))
-	summary(fit)
-	predict(fit, newdata=data.frame(x2=x1[(n+1):(n+np)]), newS=S[(n+1):(n+np),], interval="prediction")
-	predict(fit, newdata=data.frame(x2=x1[(n+1):(n+np)]), newS=S[(n+1):(n+np),], interval="prediction", opts=list(type="local", num=5))
+test_that("matern blocks engine is the same in R and C++", {
+	fit.R <- spacious(y~1, S=S, cov="matern", fixed=list(smoothness=smooth), blocks=list(type="regular", nblocks=2^2), engine="R")
+	fit.C <- spacious(y~1, S=S, cov="matern", fixed=list(smoothness=smooth), blocks=list(type="regular", nblocks=2^2), engine="C")
+	expect_that(fit.R$ll, is_close(fit.C$ll))
+})
 
+test_that("matern with smoothness=0.5 gives same as exponential", {
+	fit.E <- spacious(y~1, S=S, cov="exp", blocks=list(type="regular", nblocks=2^2), engine="R")
+	fit.M <- spacious(y~1, S=S, cov="matern", fixed=list(smoothness=0.5), blocks=list(type="regular", nblocks=2^2), engine="C")
+	expect_that(fit.E$ll, is_close(fit.M$ll))
 })
