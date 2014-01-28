@@ -10,3 +10,4 @@ export(spacious)
 
 # C functions
 useDynLib(spacious, spacious_fit)
+useDynLib(spacious, spacious_predict)

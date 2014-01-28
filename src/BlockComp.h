@@ -35,6 +35,7 @@ public:
 	void setLikForm(LikForm form);
 	void setCovType(CovType type);
 	bool setData(int n, double *y, double *S, int nblocks, int *B, int p, double *X, int npairs, int *neighbors);
+	bool setFit(double *beta, double *theta);
 	void setInits(double *theta);
 	void setFixed(bool *fixed, double *values);
 	void setTol(double tol) { mIterTol = tol; }

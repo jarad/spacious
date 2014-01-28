@@ -231,7 +231,6 @@
 		fit$engine <- "C"
 
 		# cleanup a few things
-		fit$X <- NULL
 		fit$n <- NULL
 		fit$p <- NULL
 		fit$npairs <- NULL
@@ -262,6 +261,7 @@
 	fit$time      <- t
 
 	fit$y         <- y
+	fit$X         <- X
 	fit$S         <- S
 	fit$B         <- B
 	fit$grid      <- grid

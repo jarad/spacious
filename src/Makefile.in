@@ -2,7 +2,7 @@
 CC  = @CC@
 CXX = @CXX@
 
-OBJS = BlockComp.o covs.o utils.o spacious_fit.o @CUDA_OBJS@
+OBJS = BlockComp.o covs.o utils.o spacious.o @CUDA_OBJS@
 
 # compile flags
 CFLAGS      = -Wall @CFLAGS@

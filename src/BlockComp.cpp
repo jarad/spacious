@@ -491,6 +491,29 @@ bool BlockComp::setData(int n, double *y, double *S, int nblocks, int *B, int p,
 	return(true);
 }
 
+bool BlockComp::setFit(double *beta, double *theta) {
+	free(mBeta);
+	free(mTheta);
+	mBeta = (double *)malloc(sizeof(double)*mNbeta);
+	if (mBeta == NULL) { MSG("setFit(): unable to allocate space for mBeta\n"); return(false); }
+	mTheta = (double *)malloc(sizeof(double)*mNtheta);
+	if (mTheta == NULL) { MSG("setFit(): unable to allocate space for mBeta\n"); return(false); }
+
+	free(mFitted);
+	free(mResids);
+	mFitted = (double *)malloc(sizeof(double)*mN);
+	if (mFitted == NULL) { MSG("setFit(): unable to allocate space for mFitted\n"); return(false); }
+	mResids = (double *)malloc(sizeof(double)*mN);
+	if (mResids == NULL) { MSG("setFit(): unable to allocate space for mResids\n"); return(false); }
+
+	for (int i = 0; i < mNbeta; i++)  mBeta[i]  = beta[i];
+	for (int i = 0; i < mNtheta; i++) mTheta[i] = theta[i];
+
+	mHasFit = true;
+
+	return(true);
+}
+
 void BlockComp::computeWithinDistance(int n, const double *S, double *D) {
 	int i,j;
 
@@ -2160,7 +2183,7 @@ bool BlockComp::predict(int n_0, double *y_0, const double *newS, const int *new
 
 		// compute how many prediction sites are in each block
 		for (i = 0; i < mNblocks; i++) nNewB[i] = 0;
-		for (i = 0; i < n_0; i++) nNewB[newB[i]]++;
+		for (i = 0; i < n_0; i++)      nNewB[newB[i]]++;
 
 		// compute largest number of prediction sites in a block
 		for (i = 0; i < mNblocks; i++) if (nNewB[i] > nMaxInB) nMaxInB = nNewB[i];
@@ -2192,7 +2215,7 @@ bool BlockComp::predict(int n_0, double *y_0, const double *newS, const int *new
 			if (nNewB[i] <= 0) continue;
 
 #ifdef DEBUG
-			MSG("%d predictions at block %d\n", nNewB[i], i);
+		MSG("%d predictions at block %d\n", nNewB[i], i);
 #endif
 
 			// fill in S
@@ -2382,7 +2405,7 @@ bool BlockComp::blockPredict(int block, int n_0, double *y_0,
 	// ... between prediction and block
 	for (i = 0; i < n_0; i++)
 		for (j = 0; j < mNB[block]; j++)
-			pairD[symi(i,n_0+j)] = sqrt( pow(newS[i]-mS[mWhichB[block][j]], 2) + pow(newS[i+n_0]-mS[mWhichB[block][j]+mN], 2) );
+			pairD[symi(i,j+n_0)] = sqrt( pow(newS[i]-mS[mWhichB[block][j]], 2) + pow(newS[i+n_0]-mS[mWhichB[block][j]+mN], 2) );
 	// ... within block
 	for (i = 0; i < mNB[block]; i++)
 		for (j = 0; j < mNB[block]; j++)
@@ -2403,7 +2426,8 @@ bool BlockComp::blockPredict(int block, int n_0, double *y_0,
 			continue;   // not a neighbor
 		}
 
-		N_in_pair = N_block_new+mNB[neighbor];
+		N_in_pair  = N_block_new+mNB[neighbor];
+		N_in_pair2 = mNB[block]+mNB[neighbor];
 		if (block > neighbor) trans = true;
 		else                  trans = false;
 
@@ -2432,18 +2456,18 @@ bool BlockComp::blockPredict(int block, int n_0, double *y_0,
 
 		// add prediction sites of inv(pairSigma) to A_0
 		for (i = 0; i < n_0; i++)
-			for (j =  0; j < n_0; j++)
+			for (j = 0; j < n_0; j++)
 				A_0[usymi(i,j,n_0)] += pairSigma[usymi(i,j,N_in_pair)];
 
 		// add to b_0: inv(Sigma_pair)[pred,c(block,neighbor)] x resids[c(block,neighbor)]
 		for (i = 0; i < n_0; i++)
-			for (j = 0; j < N_in_pair; j++)
-				predMat[i+j*n_0] = pairSigma[usymi(i,j,N_in_pair)];
+			for (j = 0; j < N_in_pair2; j++)
+				predMat[i+j*n_0] = pairSigma[usymi(i,j+n_0,N_in_pair)];
 
 		for (i = 0; i < mNB[neighbor]; i++)
 			pairResids[i+mNB[block]] = mResids[mWhichB[neighbor][i]];
 
-		dgemv_(&cN, &n_0, &N_in_pair, &p1, predMat, &n_0, pairResids, &i1, &p1, b_0, &i1);
+		dgemv_(&cN, &n_0, &N_in_pair2, &p1, predMat, &n_0, pairResids, &i1, &p1, b_0, &i1);
 
 		if (do_sd) {
 
@@ -2767,7 +2791,6 @@ void BlockComp::getLogLikIter(double *log_lik) {
 
 void test_bc(BlockComp::LikForm lf, int nthreads, bool gpu) {
 	BlockComp blk(nthreads, gpu);
-
 	//blk.setLikForm(BlockComp::Block);
 	//blk.setLikForm(BlockComp::Full);
 	blk.setLikForm(lf);
@@ -2775,7 +2798,7 @@ void test_bc(BlockComp::LikForm lf, int nthreads, bool gpu) {
 	blk.setCovType(BlockComp::Matern);
 
 	if (!blk.setData(test_n, test_y, test_S, test_nblocks, test_B, test_p, test_X, test_npairs, test_neighbors)) {
-		MSG("Error allocating data for fit.\n");
+		MSG("Error setting data for fit.\n");
 		return;
 	}
 	//blk.setData(test_n, test_y, test_S, test_nblocks, test_B, test_p, test_X, test_npairs, test_neighbors);
@@ -2854,6 +2877,42 @@ MSG("predicted y_0: %.2f (%.3f); %.2f (%.3f)\n", newY[0], newSD[0], newY[1], new
 
 }
 
+void test_bc_pred(BlockComp::LikForm lf, int nthreads, bool gpu) {
+	// test predictions with a set fit
+	BlockComp blk(nthreads, gpu);
+	blk.setLikForm(lf);
+	blk.setCovType(BlockComp::Exp);
+	//blk.setCovType(BlockComp::Matern);
+
+	if (!blk.setData(test_n, test_y, test_S, test_nblocks, test_B, test_p, test_X, test_npairs, test_neighbors)) {
+		MSG("Error setting data for fit.\n");
+		return;
+	}
+
+	double beta[] = {5.0, 0.0};
+	double theta[] = {0.5, 0.4, 0.15, 0.5};
+
+  // set fit
+	if (!blk.setFit(beta, theta)) {
+		error("Error with predict: unable to set fit\n");
+		return;
+	}
+
+	double newS[] = { 0.75, 0.6, 0.80, 0.85 };
+	int newB[] = { 1, 1 };
+	double newX[] = { 1.0, 1.0, 0.0, 0.0 };
+	double newY[] = { 0, 0 };
+	double newSD[] = { 0, 0 };
+
+	blk.predict(2, newY, newS, newB, newX, false, newSD);
+	MSG("predicted y_0: %.2f (%.3f); %.2f (%.3f)\n", newY[0], newSD[0], newY[1], newSD[1]);
+	newY[0]=0;newY[1]=0;
+	newSD[0]=0;newSD[1]=0;
+	blk.predict(2, newY, newS, newB, newX, true, newSD);
+	MSG("predicted y_0: %.2f (%.3f); %.2f (%.3f)\n", newY[0], newSD[0], newY[1], newSD[1]);
+
+}
+
 int main(void) {
 	// start blocks at 0
 	int i;
@@ -2878,23 +2937,23 @@ int main(void) {
 /*
 	MSG("GPU full\n");
 	t1 = clock();
-	test_bc(BlockComp::Full, 4, true);
+	test_bc_pred(BlockComp::Full, 4, true);
 	MSG("--> Done (%.2fsec)\n", (double)(clock() - t1)/CLOCKS_PER_SEC);
 
 	MSG("CPU full\n");
 	t1 = clock();
-	test_bc(BlockComp::Full, 4, false);
+	test_bc_pred(BlockComp::Full, 4, false);
 	MSG("--> Done (%.2fsec)\n", (double)(clock() - t1)/CLOCKS_PER_SEC);
 */
 
 	MSG("CPU blocks, no threads\n");
 	t1 = clock();
-	test_bc(BlockComp::Block, 1, false);
+	test_bc_pred(BlockComp::Block, 1, false);
 	MSG("--> Done (%.2fsec)\n", (double)(clock() - t1)/CLOCKS_PER_SEC);
 
 	MSG("CPU blocks, 4 threads\n");
 	t1 = clock();
-	test_bc(BlockComp::Block, 4, false);
+	test_bc_pred(BlockComp::Block, 4, false);
 	MSG("--> Done (%.2fsec)\n", (double)(clock() - t1)/CLOCKS_PER_SEC);
 /*
 */
