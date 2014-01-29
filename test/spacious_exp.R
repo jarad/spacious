@@ -14,7 +14,7 @@ set.seed(311)
 
 # generate data to use for fitting a block composite model
 n <- 1*1024
-np <- 5   # number to predict
+np <- 100   # number to predict
 
 # generate spatial locations S
 S <- round(cbind(runif(n+np), runif(n+np)),3)
@@ -104,8 +104,8 @@ print(proc.time()-t1)
 t1 <- proc.time()
 preds.C <- predict(fit.C, newdata=data.frame(x2=x1[(n+1):(n+np)]), newS=S[(n+1):(n+np),], interval="prediction", level=0.9, engine="C")
 print(proc.time()-t1)
-print(preds.R)
-print(preds.C)
+print(head(preds.R))
+print(head(preds.C))
 done
 	fit.CT <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="exp", blocks=list(type="regular", nblocks=6^2), verbose=TRUE, nthreads=4, engine="C")
 done

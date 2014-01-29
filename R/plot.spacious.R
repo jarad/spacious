@@ -6,6 +6,6 @@
 	plot(0:x$nIter, x$iters.theta[,1], type="b", xlab="Iteration", ylab="Nugget")
 	plot(0:x$nIter, x$iters.theta[,2], type="b", xlab="Iteration", ylab="Partial Sill")
 	plot(0:x$nIter, x$iters.theta[,3], type="b", xlab="Iteration", ylab="Range")
-	plot(0:x$nIter, x$iters.ll, type="b", xlab="Iteration", ylab="-2 * log likelihood")
+	plot(0:x$nIter, x$iters.ll, type="b", xlab="Iteration", ylab="Log Likelihood")
 
 }

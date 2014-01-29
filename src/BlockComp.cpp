@@ -2232,7 +2232,7 @@ bool BlockComp::predict(int n_0, double *y_0, const double *newS, const int *new
 			}
 
 			if (!blockPredict(i, nNewB[i], y_block, S_block, X_block, do_sd, sd_block)) {
-				MSG("Unable to predict sites in block %d\n", i);
+				MSG("Unable to predict sites in block %d (n=%d sites)\n", i+1, nNewB[i]);
 
 				for (j = 0; j < mNblocks; j++) {
 					if (nNewB[j] == 0) continue;
@@ -2364,11 +2364,11 @@ bool BlockComp::blockPredict(int block, int n_0, double *y_0,
 	int    i1 = 1;
 	double zero = 0.0;
 
-	int i,j,k;
+	int i,j;
 	int ip,ip2;
 	int neighbor,neighbor2;
 	int N_in_pair,N_in_pair2;
-	int N_in_pairB,N_in_pairB2;
+	int N_in_pairB;
 	bool trans,trans2;
 
 	int    N_block_new = n_0+mNB[block];
@@ -2454,13 +2454,13 @@ bool BlockComp::blockPredict(int block, int n_0, double *y_0,
 
 		// invert pairSigma
 		if (chol2inv(N_in_pair, pairSigma)) {
-			MSG("blockPredict(): Unable to invert Sigma for pair (%d,%d)\n", block, neighbor);
+			MSG("[%d] blockPredict(): Unable to invert Sigma for pair (%d,%d)\n", __LINE__, block, neighbor);
 			return(false);
 		}
 
 		// add prediction sites of inv(pairSigma) to A_0
 		for (i = 0; i < n_0; i++)
-			for (j = 0; j < n_0; j++)
+			for (j = i; j < n_0; j++)
 				A_0[usymi(i,j,n_0)] += pairSigma[usymi(i,j,N_in_pair)];
 
 		// add to b_0: inv(Sigma_pair)[pred,c(block,neighbor)] x resids[c(block,neighbor)]
@@ -2492,7 +2492,6 @@ bool BlockComp::blockPredict(int block, int n_0, double *y_0,
 				}
 
 				N_in_pair2  = N_block_new+mNB[neighbor2];
-				N_in_pairB2 = mNB[block]+mNB[neighbor2];
 				if (block > neighbor2) trans2 = true;
 				else                   trans2 = false;
 
@@ -2515,7 +2514,7 @@ bool BlockComp::blockPredict(int block, int n_0, double *y_0,
 
 				// invert pairSigma2
 				if (chol2inv(N_in_pair2, pairSigma2)) {
-					MSG("blockPredict(): Unable to invert Sigma2 for pair (%d,%d)\n", block, neighbor2);
+					MSG("[%d] blockPredict(): Unable to invert Sigma2 for pair (%d,%d)\n", __LINE__, block, neighbor2);
 					return(false);
 				}
 
@@ -2581,14 +2580,17 @@ bool BlockComp::blockPredict(int block, int n_0, double *y_0,
 			invA_0[usymi(i,j,n_0)] = A_0[usymi(i,j,n_0)];
 
 	if (chol2inv(n_0, invA_0)) {
-		MSG("blockPredict(): unable to invert A_0\n");
+		MSG("[%d] blockPredict(): unable to invert A_0\n", __LINE__);
 		return(false);
 	}
 
-	// fill in lower part of invA_0
-	for (i = 0; i < n_0; i++)
-		for (j = i+1; j < n_0; j++)
+	// fill in lower part of A_0 and invA_0
+	for (i = 0; i < n_0; i++) {
+		for (j = i+1; j < n_0; j++) {
+			A_0[lsymi(i,j,n_0)]    = A_0[usymi(i,j,n_0)];
 			invA_0[lsymi(i,j,n_0)] = invA_0[usymi(i,j,n_0)];
+		}
+	}
 
 	// negate b_0
 	for (i = 0; i < n_0; i++) b_0[i] = -b_0[i];
@@ -2654,7 +2656,7 @@ bool BlockComp::blockPredict(int block, int n_0, double *y_0,
 
 			// invert pairSigma = inv(pairSigma2)
 			if (chol2inv(N_in_pair, pairSigma2)) {
-				MSG("blockPredict(): Unable to invert Sigma for pair (%d,%d)\n", block, neighbor);
+				MSG("[%d] blockPredict(): Unable to invert Sigma for pair (%d,%d)\n", __LINE__, block, neighbor);
 				return(false);
 			}
 
@@ -2674,12 +2676,12 @@ bool BlockComp::blockPredict(int block, int n_0, double *y_0,
 			dgemm_(&cN, &cN, /*m*/&n_0, /*n*/&mNB[neighbor], /*k*/&N_block_new, /*alpha*/&p2, /*A*/B_0, /*lda*/&n_0,
 			       /*B*/predMat, /*ldb*/&N_block_new, /*beta*/&zero, /*C*/predMat3, /*ldc*/&n_0);
 			dgemm_(&cN, &cN, /*m*/&n_0, /*n*/&n_0, /*k*/&mNB[neighbor], /*alpha*/&p1, /*A*/predMat3, /*lda*/&n_0,
-			       /*B*/predMat2, /*ldb*/&N_in_pair, /*beta*/&p1, /*C*/J_0, /*ldc*/&n_0);
+			       /*B*/predMat2, /*ldb*/&mNB[neighbor], /*beta*/&p1, /*C*/J_0, /*ldc*/&n_0);
 		}
 
 		// invert J_0
 		if (chol2inv(n_0, J_0)) {
-			MSG("blockPredict(): Unable to invert J_0\n");
+			MSG("[%d] blockPredict(): Unable to invert J_0\n", __LINE__);
 			return(false);
 		}
 		// fill in lower part
@@ -2695,7 +2697,7 @@ bool BlockComp::blockPredict(int block, int n_0, double *y_0,
 
 		// invert J_0
 		if (chol2inv(n_0, J_0)) {
-			MSG("blockPredict(): Unable to invert J_0\n");
+			MSG("[%d] blockPredict(): Unable to invert J_0\n", __LINE__);
 			return(false);
 		}
 

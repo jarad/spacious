@@ -278,6 +278,7 @@
 
 							J_0 <- J_0 + 2 * B_0 %*% Sigma.n1[1:n.in.b,n.in.b+1:n.in.n1] %*% invSigma.n1[n.in.b+1:n.in.n1,1:n.in.new]
 						}
+
 						sd.pred[in.new-nFit] <- sqrt(diag( chol2inv(chol(H_0 %*% chol2inv(chol(J_0)) %*% H_0)) ))
 					}
 				}
