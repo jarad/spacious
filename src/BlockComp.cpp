@@ -2360,6 +2360,7 @@ bool BlockComp::blockPredict(int block, int n_0, double *y_0,
 	char   cN = 'N';
 	char   cT = 'T';
 	double p1 = 1.0;
+	double p2 = 2.0;
 	int    i1 = 1;
 	double zero = 0.0;
 
@@ -2367,10 +2368,12 @@ bool BlockComp::blockPredict(int block, int n_0, double *y_0,
 	int ip,ip2;
 	int neighbor,neighbor2;
 	int N_in_pair,N_in_pair2;
+	int N_in_pairB,N_in_pairB2;
 	bool trans,trans2;
 
 	int    N_block_new = n_0+mNB[block];
 	double A_0[n_0*n_0];
+	double invA_0[n_0*n_0];
 	double b_0[n_0];
 	double J_0[n_0*n_0];
 	double B_0[n_0*N_block_new];
@@ -2383,10 +2386,11 @@ bool BlockComp::blockPredict(int block, int n_0, double *y_0,
 
 	double predMat[n_0*mMaxPair];
 	double predMat2[n_0*mMaxPair];
+	double predMat3[n_0*mMaxPair];
 	double pairResids[mMaxPair];
 
 	// initialize
-	for (i = 0; i < n_0*n_0; i++)         A_0[i] = J_0[i] = 0;
+	for (i = 0; i < n_0*n_0; i++)         A_0[i] = invA_0[i] = J_0[i] = 0;
 	for (i = 0; i < n_0; i++)             b_0[i] = 0;
 	for (i = 0; i < n_0*N_block_new; i++) B_0[i] = 0;
 
@@ -2427,7 +2431,7 @@ bool BlockComp::blockPredict(int block, int n_0, double *y_0,
 		}
 
 		N_in_pair  = N_block_new+mNB[neighbor];
-		N_in_pair2 = mNB[block]+mNB[neighbor];
+		N_in_pairB = mNB[block]+mNB[neighbor];
 		if (block > neighbor) trans = true;
 		else                  trans = false;
 
@@ -2461,13 +2465,13 @@ bool BlockComp::blockPredict(int block, int n_0, double *y_0,
 
 		// add to b_0: inv(Sigma_pair)[pred,c(block,neighbor)] x resids[c(block,neighbor)]
 		for (i = 0; i < n_0; i++)
-			for (j = 0; j < N_in_pair2; j++)
+			for (j = 0; j < N_in_pairB; j++)
 				predMat[i+j*n_0] = pairSigma[usymi(i,j+n_0,N_in_pair)];
 
 		for (i = 0; i < mNB[neighbor]; i++)
 			pairResids[i+mNB[block]] = mResids[mWhichB[neighbor][i]];
 
-		dgemv_(&cN, &n_0, &N_in_pair2, &p1, predMat, &n_0, pairResids, &i1, &p1, b_0, &i1);
+		dgemv_(&cN, &n_0, &N_in_pairB, &p1, predMat, &n_0, pairResids, &i1, &p1, b_0, &i1);
 
 		if (do_sd) {
 
@@ -2487,7 +2491,8 @@ bool BlockComp::blockPredict(int block, int n_0, double *y_0,
 					continue;   // not a neighbor
 				}
 
-				N_in_pair2 = N_block_new+mNB[neighbor2];
+				N_in_pair2  = N_block_new+mNB[neighbor2];
+				N_in_pairB2 = mNB[block]+mNB[neighbor2];
 				if (block > neighbor2) trans2 = true;
 				else                   trans2 = false;
 
@@ -2551,37 +2556,46 @@ bool BlockComp::blockPredict(int block, int n_0, double *y_0,
 					mCov->computeCross(neighborSigma, mTheta, mNB[neighbor], mNB[neighbor2], mBetweenD[neighbor_pair], false, false, trans2);
 				}
 
+				for (i = 0; i < n_0; i++)
+					for (j = 0; j < mNB[neighbor]; j++)
+						predMat2[i+j*n_0] = pairSigma[usymi(i,j+n_0+mNB[block],N_in_pair)];
+
 				// add to J_0: inv(Sigma_pair)[pred,neighbor] x Sigma_n1n2[neighbor,neighbor2] x inv(Sigma_pair2)[neighbor2,pred]
-				dgemm_(&cN, &cN, &n_0, &mNB[neighbor2], &mNB[neighbor], &p1, predMat, &n_0, neighborSigma, &mNB[neighbor], &zero, predMat2, &n_0);
+				dgemm_(&cN, &cN, /*m*/&n_0, /*n*/&mNB[neighbor2], /*k*/&mNB[neighbor], /*alpha*/&p1, /*A*/predMat2, /*lda*/&n_0,
+				       /*B*/neighborSigma, /*ldb*/&mNB[neighbor], /*beta*/&zero, /*C*/predMat3, /*ldc*/&n_0);
 
 				for (i = 0; i < n_0; i++)
-					for (j = 0; j < N_in_pair2; j++)
-						predMat[i+j*n_0] = pairSigma2[usymi(i,j,N_in_pair2)];
+					for (j = 0; j < mNB[neighbor2]; j++)
+						predMat2[i+j*n_0] = pairSigma2[usymi(i,j+n_0+mNB[block],N_in_pair2)];
 
-				dgemm_(&cN, &cN, &n_0, &n_0, &mNB[neighbor2], &p1, predMat2, &n_0, predMat, &mNB[neighbor2], &p1, J_0, &n_0);
-
+				dgemm_(&cN, &cT, /*m*/&n_0, /*n*/&n_0, /*k*/&mNB[neighbor2], /*alpha*/&p1, /*A*/predMat3, /*lda*/&n_0,
+				       /*B*/predMat2, /*ldb*/&n_0, /*beta*/&p1, /*C*/J_0, /*ldc*/&n_0);
 			}
 
 		}
 	}  // end neighbor
 
 	// invert A_0
-	if (chol2inv(n_0, A_0)) {
+	for (i = 0; i < n_0; i++)
+		for (j = i; j < n_0; j++)
+			invA_0[usymi(i,j,n_0)] = A_0[usymi(i,j,n_0)];
+
+	if (chol2inv(n_0, invA_0)) {
 		MSG("blockPredict(): unable to invert A_0\n");
 		return(false);
 	}
 
-	// fill in lower part of A_0
+	// fill in lower part of invA_0
 	for (i = 0; i < n_0; i++)
 		for (j = i+1; j < n_0; j++)
-			A_0[lsymi(i,j,n_0)] = A_0[usymi(i,j,n_0)];
+			invA_0[lsymi(i,j,n_0)] = invA_0[usymi(i,j,n_0)];
 
 	// negate b_0
 	for (i = 0; i < n_0; i++) b_0[i] = -b_0[i];
 
 	// set y_0[pred] = newX[pred] x beta + inv(A_0) x b_0
 	dgemv_(&cN, &n_0, &mNbeta, &p1, newX, &n_0, mBeta, &i1, &zero, y_0, &i1);
-	dgemv_(&cN, &n_0, &n_0, &p1, A_0, &n_0, b_0, &i1, &p1, y_0, &i1);
+	dgemv_(&cN, &n_0, &n_0, &p1, invA_0, &n_0, b_0, &i1, &p1, y_0, &i1);
 
 	if (do_sd) {
 		// negate A_0
@@ -2597,7 +2611,7 @@ bool BlockComp::blockPredict(int block, int n_0, double *y_0,
 				pairSigma[lsymi(i,j,N_block_new)] = pairSigma[usymi(i,j,N_block_new)];
 
 		// ... multiplty B_0 x pairSigma x t(B_0)
-		dgemm_(&cN, &cN, &n_0, &mNB[block], &N_block_new, &p1, B_0, &n_0, pairSigma, &N_block_new, &zero, predMat, &n_0);
+		dgemm_(&cN, &cN, &n_0, &N_block_new, &N_block_new, &p1, B_0, &n_0, pairSigma, &N_block_new, &zero, predMat, &n_0);
 		dgemm_(&cN, &cT, &n_0, &n_0, &N_block_new, &p1, predMat, &n_0, B_0, &n_0, &p1, J_0, &n_0);
 
 		// for each neighboring block...
@@ -2611,7 +2625,8 @@ bool BlockComp::blockPredict(int block, int n_0, double *y_0,
 				continue;   // not a neighbor
 			}
 
-			N_in_pair = N_block_new+mNB[neighbor];
+			N_in_pair  = N_block_new+mNB[neighbor];
+			N_in_pairB = mNB[block]+mNB[neighbor];
 			if (block > neighbor) trans = true;
 			else                  trans = false;
 
@@ -2632,8 +2647,6 @@ bool BlockComp::blockPredict(int block, int n_0, double *y_0,
 			// compute covariance between pair
 			mCov->compute(pairSigma, mTheta, N_in_pair, pairD);
 
-//			for (i = 0; i < N_in_pair;
-
 			// store pairSigma in pairSigma2 for inversion
 			for (i = 0; i < N_in_pair; i++)
 				for (j = i; j < N_in_pair; j++)
@@ -2645,32 +2658,23 @@ bool BlockComp::blockPredict(int block, int n_0, double *y_0,
 				return(false);
 			}
 
-			// fill in lower parts of pairSigma and pairSigma2
-			for (i = 0; i < N_in_pair; i++) {
-				for (j = i+1; j < N_in_pair; j++) {
-					pairSigma[lsymi(i,j,N_in_pair)]  = pairSigma[usymi(i,j,N_in_pair)];
-					pairSigma2[lsymi(i,j,N_in_pair)] = pairSigma2[usymi(i,j,N_in_pair)];
-				}
-			}
-
-			// add 2 x B_0 x sigmaPair[block,neighbor] x invSigmaPair[neighbor,pred] to J_0
+			// add 2 x B_0 x pairSigma[c(pred,block),neighbor] x invPairSigma[neighbor,pred] to J_0
 			for (i = 0; i < N_block_new; i++) {
-				for (j = 0; j < n_0; j++) {
-					predMat[i + j*N_block_new] = 0;
-					for (k = 0; k < mNB[neighbor]; k++) {
-						predMat[i + j*N_block_new] += pairSigma[usymi(i,k,N_in_pair)]*pairSigma2[usymi(k,j,N_in_pair)];
-					}
+				for (j = 0; j < mNB[neighbor]; j++) {
+					predMat[i + j*N_block_new] = pairSigma[usymi(i,j+N_block_new,N_in_pair)];
 				}
 			}
 
-			for (i = 0; i < n_0; i++) {
+			for (i = 0; i < mNB[neighbor]; i++) {
 				for (j = 0; j < n_0; j++) {
-					for (k = 0; k < N_block_new; k++) {
-						J_0[i + j*n_0] += 2 * B_0[i + k*n_0]*predMat[k + j*N_block_new];
-					}
+					predMat2[i + j*mNB[neighbor]] = pairSigma2[usymi(j,i+N_block_new,N_in_pair)];
 				}
 			}
 
+			dgemm_(&cN, &cN, /*m*/&n_0, /*n*/&mNB[neighbor], /*k*/&N_block_new, /*alpha*/&p2, /*A*/B_0, /*lda*/&n_0,
+			       /*B*/predMat, /*ldb*/&N_block_new, /*beta*/&zero, /*C*/predMat3, /*ldc*/&n_0);
+			dgemm_(&cN, &cN, /*m*/&n_0, /*n*/&n_0, /*k*/&mNB[neighbor], /*alpha*/&p1, /*A*/predMat3, /*lda*/&n_0,
+			       /*B*/predMat2, /*ldb*/&N_in_pair, /*beta*/&p1, /*C*/J_0, /*ldc*/&n_0);
 		}
 
 		// invert J_0
@@ -2684,17 +2688,10 @@ bool BlockComp::blockPredict(int block, int n_0, double *y_0,
 		// compute A_0 x inv(J_0) x A_0
 		double S_0[n_0*n_0];
 
-		for (i = 0; i < n_0; i++) for (j = 0; j < n_0; j++) S_0[i + j*n_0] = 0;
-		for (i = 0; i < n_0; i++)
-			for (j = 0; j < n_0; j++)
-				for (k = 0; k < n_0; k++)
-					S_0[i + j*n_0] += J_0[i + k*n_0]*A_0[k + j*n_0];
-
-		for (i = 0; i < n_0; i++) for (j = 0; j < n_0; j++) J_0[i + j*n_0] = 0;
-		for (i = 0; i < n_0; i++)
-			for (j = 0; j < n_0; j++)
-				for (k = 0; k < n_0; k++)
-					J_0[i + j*n_0] += A_0[i + k*n_0]*S_0[k + j*n_0];
+		dgemm_(&cN, &cN, /*m*/&n_0, /*n*/&n_0, /*k*/&n_0, /*alpha*/&p1, /*A*/A_0, /*lda*/&n_0,
+		       /*B*/J_0, /*ldb*/&n_0, /*beta*/&zero, /*C*/S_0, /*ldc*/&n_0);
+		dgemm_(&cN, &cN, /*m*/&n_0, /*n*/&n_0, /*k*/&n_0, /*alpha*/&p1, /*A*/S_0, /*lda*/&n_0,
+		       /*B*/A_0, /*ldb*/&n_0, /*beta*/&zero, /*C*/J_0, /*ldc*/&n_0);
 
 		// invert J_0
 		if (chol2inv(n_0, J_0)) {
@@ -2706,38 +2703,6 @@ bool BlockComp::blockPredict(int block, int n_0, double *y_0,
 			sd[i] = sqrt(J_0[i + i*n_0]);
 		}
 	} // end do_sd
-
-/*
-	- For each block we have prediction sites in...
-		o We must construct A_0 (n_0 by n_0) and b_0 (n_0 by 1)
-		o For prediction SDs, we must construct J_0 (n_0 by n_0) and B_0 (n_0 by n_0+n_block)
-		o For each neighboring block (neighbor):
-			- Invert Cov(Y_pair) to get inv(Sigma_pair)
-			- Add the n_0 block of inv(Sigma_pair) to A_0
-			- Add to b_0: inv(Sigma_pair)[pred,block] x resids_block + inv(Sigma_pair)[pred,neighbor] x resids_neighbor
-				o Can probably write this as: inv(Sigma_pair)[pred,c(block,neighbor)] x resids[c(block,neighbor)]
-			- For prediction SDs:
-				o Add to B_0: inv(Sigma_pair)[pred,c(pred,block)]
-				o For each neighboring block (neighbor2):
-					- Invert Cov(Y_pair2) to get inv(Sigma_pair2)
-					- Compute Cov(neighbor,neighbor2)
-					- Add to J_0: inv(Sigma_pair)[pred,neighbor] x Sigma_n1n2[neighbor,neighbor2] x inv(Sigma_pair2)[n2,pred]
-							J_0 <- J_0 + invSigma.n1[1:n.in.new,n.in.new+n.in.obs+1:n.in.n1] %*%
-								Sigma.n1n2[1:n.in.n1,n.in.n1+1:n.in.n2] %*% invSigma.n2[n.in.new+n.in.obs+1:n.in.n2,1:n.in.new]
-		o Invert A_0
-		o Negate b_0
-		o Take y_0[pred] = newX[pred] x beta + inv(A_0) x b_0
-		o For prediction SDs:
-			- Take H_0 = -A_0
-			- Add to J_0: B_0 x Sigma_block x t(B_0)
-					Sigma <- compute_cov(object$cov, theta, D[in.b,in.b])
-					J_0   <- J_0 + B_0 %*% Sigma %*% t(B_0)
-			- For each neighboring block (neighbor):
-				o Compute inv(Sigma[c(new,block,neighbor)])
-				o Add to J_0: 2 x B_0 x Sigma[block,neighbor] x inv(Sigma)[neighbor,pred]
-			- Compute prediction SDs: sqrt(diag( inv(H_0 x inv(J_0) x H_0) ))
-
-*/
 
 	return(true);
 }
@@ -2755,12 +2720,6 @@ void BlockComp::getBetaIter(double *beta) {
 		for (int j = 0; j < (mIters+1); j++)
 			beta[j + i*(mIters+1)] = mIterBeta[i + j*mNbeta];
 }
-
-/*
-		for (i = 0; i < mNbeta; i++)  { mIterBeta[i + mNbeta*(mIters+1)]   = mBeta[i];  }
-		for (i = 0; i < mNtheta; i++) { mIterTheta[i + mNtheta*(mIters+1)] = mTheta[i]; }
-		mIterLogLik[mIters+1] = log_lik;
-*/
 
 void BlockComp::getTheta(double *theta) {
 	if (mIters <= 0) return;

@@ -75,7 +75,7 @@ void CovExp::computeCross(double *Sigma, double *theta, int n1, int n2, double *
 		// we are filling in the n1 x n2 matrix Sigma that only has cross terms
 		for (i = 0; i < n1; i++) {
 			for (j = 0; j < n2; j++) {
-				if (transpose) Sigma[j + i*n2] = theta[1] * exp(-Dc[j + i*n2]/theta[2]);
+				if (transpose) Sigma[i + j*n1] = theta[1] * exp(-Dc[j + i*n2]/theta[2]);
 				else           Sigma[i + j*n1] = theta[1] * exp(-Dc[i + j*n1]/theta[2]);
 			}
 		}
@@ -295,7 +295,7 @@ void CovMatern::computeCross(double *Sigma, double *theta, int n1, int n2, doubl
 		// we are filling in the n1 x n2 matrix Sigma that only has cross terms
 		for (i = 0; i < n1; i++) {
 			for (j = 0; j < n2; j++) {
-				if (transpose) Sigma[j + i*n2] = theta[1] * rho(Dc[j + i*n2], theta, work);
+				if (transpose) Sigma[i + j*n1] = theta[1] * rho(Dc[j + i*n2], theta, work);
 				else           Sigma[i + j*n1] = theta[1] * rho(Dc[i + j*n1], theta, work);
 			}
 		}
