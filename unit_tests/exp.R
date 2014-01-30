@@ -50,27 +50,27 @@ test_that("exponential gpu equals non-gpu", {
 test_that("exponential full engine is the same in R and C++", {
 	fit.R <- spacious(y~x1, S=S.fit, cov="exp", blocks=list(type="full"), data=data.fit, cov.inits=cov.inits, engine="R")
 	fit.C <- spacious(y~x1, S=S.fit, cov="exp", blocks=list(type="full"), data=data.fit, cov.inits=cov.inits, engine="C")
-	expect_that(fit.R$ll, is_close(fit.C$ll))
+	expect_equal(fit.R$ll, fit.C$ll)
 
 	preds.R <- predict(fit.C, newdata=data.pred, newS=S.pred, interval="prediction", level=0.9, engine="R")
 	preds.C <- predict(fit.C, newdata=data.pred, newS=S.pred, interval="prediction", level=0.9, engine="C")
 
 	for (i in 1:np) {
-		expect_that(preds.R$y[i], equals(preds.C$y[i]), label=paste0("y for ",i))
-		expect_that(preds.R$sd[i], equals(preds.C$sd[i]), label=paste0("sd for ",i))
+		expect_equal(preds.R$y[i], preds.C$y[i], label=paste0("y for ",i))
+		expect_equal(preds.R$sd[i], preds.C$sd[i], label=paste0("sd for ",i))
 	}
 })
 
 test_that("exponential blocks engine is the same in R and C++", {
 	fit.R <- spacious(y~x1, S=S.fit, cov="exp", blocks=list(type="regular", nblocks=2^2), data=data.fit, cov.inits=cov.inits, engine="R")
 	fit.C <- spacious(y~x1, S=S.fit, cov="exp", blocks=list(type="regular", nblocks=2^2), data=data.fit, cov.inits=cov.inits, engine="C")
-	expect_that(fit.R$ll, is_close(fit.C$ll))
+	expect_equal(fit.R$ll, fit.C$ll)
 
 	preds.R <- predict(fit.C, newdata=data.pred, newS=S.pred, interval="prediction", level=0.9, engine="R")
 	preds.C <- predict(fit.C, newdata=data.pred, newS=S.pred, interval="prediction", level=0.9, engine="C")
 
 	for (i in 1:np) {
-		expect_that(preds.R$y[i], equals(preds.C$y[i]), label=paste0("y for ",i))
-		expect_that(preds.R$sd[i], equals(preds.C$sd[i]), label=paste0("sd for ",i))
+		expect_equal(preds.R$y[i], preds.C$y[i], label=paste0("y for ",i))
+		expect_equal(preds.R$sd[i], preds.C$sd[i], label=paste0("sd for ",i))
 	}
 })

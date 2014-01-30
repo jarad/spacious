@@ -85,7 +85,7 @@
 
 	if (sum(!theta_fixed) > 0) {
 		# compute some initial values
-		which.inits <- which(theta_fixed[1:3] == FALSE)
+		which.inits <- which(theta_fixed[1:R] == FALSE)
 		if (length(which.inits) > 0) {
 			theta[which.inits] <- (initial.theta(y, S))[which.inits]
 		}
@@ -93,16 +93,16 @@
 
 	if (!missing(cov.inits)) {
 		# set initial values from user
-		if (!is.null(cov.inits$nugget)) {
+		if (!is.null(cov.inits$nugget) && !theta_fixed[1]) {
 			theta[1] <- cov.inits$nugget
 		}
-		if (!is.null(cov.inits$psill)) {
+		if (!is.null(cov.inits$psill) && !theta_fixed[2]) {
 			theta[2] <- cov.inits$psill
 		}
-		if (!is.null(cov.inits$range)) {
+		if (!is.null(cov.inits$range) && !theta_fixed[3]) {
 			theta[3] <- cov.inits$range
 		}
-		if (cov == "matern" && !is.null(cov.inits$smooth)) {
+		if (cov == "matern" && !is.null(cov.inits$smooth) && !theta_fixed[4]) {
 			theta[4] <- cov.inits$smooth
 		}
 	}
