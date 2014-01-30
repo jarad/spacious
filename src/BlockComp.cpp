@@ -522,7 +522,7 @@ void BlockComp::computeWithinDistance(int n, const double *S, double *D) {
 			if (i == j) {
 				D[ symi(j,j) ] = 0;
 			} else {
-				D[ symi(i,j) ] = sqrt( pow(S[i]-S[j], 2) + pow(S[i+n] - S[j+n], 2) );
+				D[ symi(i,j) ] = sqrt( pow(S[i]-S[j], 2.0) + pow(S[i+n] - S[j+n], 2.0) );
 			}
 		}
 	}
@@ -576,7 +576,6 @@ void BlockComp::setFixed(bool *fixed, double *values) {
 // compute log-likelihood
 bool BlockComp::computeLogLik(double *log_lik) {
 	int i;
-	double log_det;
 	double q[mMaxPair];
 
 	char   cN = 'N';
@@ -584,7 +583,6 @@ bool BlockComp::computeLogLik(double *log_lik) {
 	int    i1 = 1;
 
 	// initialization
-	log_det = 0;
 	*log_lik = 0;
 
 	if (mLikForm == Block) {
@@ -652,11 +650,10 @@ bool BlockComp::computeLogLik(double *log_lik) {
 	} else if (mLikForm == Full) {
 		for (i = 0; i < mN; i++) q[i] = 0;
 
-		// invert covariance
-		if (!invertFullCov(true, &log_det)) return(false);
+		// covariance inverted in update theta
 
 		// add determinant piece to log-likelihood
-		*log_lik += log_det;
+		*log_lik += mLogDet;
 #ifdef CUDA
 		if (!mGPU) {
 #endif
@@ -1069,7 +1066,7 @@ bool BlockComp::fit(bool verbose) {
 
 	if (mLikForm == Full) {
 		// invert full covariance once to start
-		if (!invertFullCov()) {
+		if (!invertFullCov(true, &mLogDet)) {
 			MSG("Unable to invert full covariance using initial values.\n");
 			return(false);
 		}
@@ -1282,14 +1279,15 @@ bool BlockComp::updateBeta() {
 
 			double *dXtS = (double *)malloc(sizeof(double)*mNbeta*mN);
 			if (dXtS == NULL) { MSG("Unable to allocate space for dXtS\n"); return(false); }
-			for (i = 0; i < mNbeta*mN; i++) { dXtS[i] = 0; }
 			char   cT = 'T';
 			char   cN = 'N';
 			double p1 = 1.0;
+			double zero = 0.0;
 			int    i1 = 1;
 
 			// compute X'inv(Sigma)
-			dgemm_(&cT, &cN, &mNbeta, &mN, &mN, &p1, mX, &mN, mSigma[0], &mN, &p1, dXtS, &mNbeta);
+			dgemm_(&cT, &cN, /*m*/&mNbeta, /*n*/&mN, /*k*/&mN, /*alpha*/&p1, /*A*/mX, /*lda*/&mN,
+			       /*B*/mSigma[0], /*ldb*/&mN, /*beta*/&zero, /*C*/dXtS, /*ldc*/&mNbeta);
 
 			// compute A = X'inv(Sigma)X
 			dgemm_(&cN, &cN, &mNbeta, &mNbeta, &mN, &p1, dXtS, &mNbeta, mX, &mN, &p1, mBeta_A, &mNbeta);
@@ -1926,6 +1924,10 @@ bool BlockComp::updateTheta() {
 	for (i = 0; i < mNtheta; i++) { mTheta[i] =  mThetaT[i]; }
 	mCov->transformFromReal(mTheta);
 
+	if (mLikForm == Full) {
+		// invert covariance after update
+		if (!invertFullCov(true, &mLogDet)) return(false);
+	}
 	return(true);
 }
 
@@ -2900,13 +2902,14 @@ int main(void) {
 	t1 = clock();
 	test_bc_pred(BlockComp::Full, 4, true);
 	MSG("--> Done (%.2fsec)\n", (double)(clock() - t1)/CLOCKS_PER_SEC);
+*/
 
 	MSG("CPU full\n");
 	t1 = clock();
 	test_bc_pred(BlockComp::Full, 4, false);
 	MSG("--> Done (%.2fsec)\n", (double)(clock() - t1)/CLOCKS_PER_SEC);
-*/
 
+/*
 	MSG("CPU blocks, no threads\n");
 	t1 = clock();
 	test_bc_pred(BlockComp::Block, 1, false);
@@ -2916,7 +2919,6 @@ int main(void) {
 	t1 = clock();
 	test_bc_pred(BlockComp::Block, 4, false);
 	MSG("--> Done (%.2fsec)\n", (double)(clock() - t1)/CLOCKS_PER_SEC);
-/*
 */
 
 /*

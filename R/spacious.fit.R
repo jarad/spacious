@@ -112,7 +112,8 @@
 		b[seq.p]  <<- 0
 
 		apply(neighbors, 1, function(row) {
-			in.pair <- c(which(B==row[1]),  which(B==row[2]))
+			if (row[1] == row[2]) in.pair <- which(B==row[1]) # full likelihood
+			else                  in.pair <- c(which(B==row[1]),  which(B==row[2]))
 
 			Sigma    <- compute_cov(cov, t_theta(theta), D[in.pair,in.pair])
 			invSigma <- chol2inv(chol(Sigma))

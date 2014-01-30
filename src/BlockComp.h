@@ -149,6 +149,8 @@ private:
 	double  *mTheta_H;
 	double  *mTheta_P;
 
+	double   mLogDet;
+
 #ifdef PTHREAD
 	static void *updateBetaThread(void *work);
 	static void *updateThetaThread(void *work);

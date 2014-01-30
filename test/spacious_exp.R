@@ -87,9 +87,13 @@ print(fit.spacious$time)
 }
 
 if (TRUE) { # compare R vs C
+	#set.seed(1983);
 	#fit.R <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="exp", blocks=list(type="full"), verbose=TRUE, engine="R")
-	#fit.C <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="exp", blocks=list(type="full"), verbose=TRUE, engine="C")
-	#fit.CG <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="exp", blocks=list(type="full"), verbose=TRUE, engine="C", gpu=TRUE)
+	set.seed(1983);
+	fit.C <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="exp", blocks=list(type="full"), verbose=TRUE, engine="C")
+	set.seed(1983);
+	fit.CG <- spacious(y~x2, data=data.frame(y=y[1:n], x2=x1[1:n]), S=S[1:n,], cov="exp", blocks=list(type="full"), verbose=TRUE, engine="C", gpu=TRUE)
+done
 #preds.C <- predict(fit.CG, newdata=data.frame(x2=x1[(n+1):(n+np)]), newS=S[(n+1):(n+np),], interval="prediction", level=0.9, engine="C")
 #preds.R <- predict(fit.CG, newdata=data.frame(x2=x1[(n+1):(n+np)]), newS=S[(n+1):(n+np),], interval="prediction", level=0.9, engine="R")
 #print(preds.C)
