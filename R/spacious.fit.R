@@ -280,115 +280,100 @@
 	}
 
 	# compute covariance matrix of parameters
-	vcov_theta <- matrix(0, nrow=p, ncol=p)
-	vcov.theta <- matrix(0, nrow=R, ncol=R)
+	vcov_beta <- matrix(0, nrow=p, ncol=p)
+	vcov_theta <- matrix(0, nrow=R, ncol=R)
 	se_beta <- rep(0, p)
 	se_theta <- rep(0, R)
 
-if (FALSE) { # compute standard errors
+if (TRUE) { # compute standard errors
 	# update hessian
 	update_theta(beta, theta)
 
 	# compute standard errors
-	J.beta  <- matrix(0, nrow=p, ncol=p)
-#	J.theta <- matrix(0, nrow=R, ncol=R) #diag(diag(FI))
-	J.theta <- FI
+	if (nrow(neighbors) <= 1) { # full likelihood
+		vcov_beta  <- chol2inv(chol(A))
+		if (Nnot_fixed > 0) {
+			vcov_theta[which.not_fixed,which.not_fixed] <- chol2inv(chol(FI[which.not_fixed,which.not_fixed]))
+		}
+	} else { # BCL
+		J.beta  <- matrix(0, nrow=p, ncol=p)
+		J.theta <- FI
 
-	for (i in 1:nrow(neighbors)) {
+		for (i in 1:nrow(neighbors)) {
+			for (j in 1:nrow(neighbors)) {
+				# do pairs i and j have a common block?
 
-		for (j in 1:nrow(neighbors)) {
-			# do pairs i and j have a common block?
+				if (!any(neighbors[i,] == neighbors[j,1]) & !any(neighbors[i,] == neighbors[j,2])) {
+					# none in common; skip this pair
+					next;
+				}
 
-#			if (!any(neighbors[i,] == neighbors[j,1]) & !any(neighbors[i,] == neighbors[j,2])) {
-#				next;
-#			}
+				k1         <- neighbors[i,1]
+				l1         <- neighbors[i,2]
+				in.k1      <- which(B==k1)
+				in.l1      <- which(B==l1)
+				n.k1       <- length(in.k1)
+				n.l1       <- length(in.l1)
+				k2         <- neighbors[j,1]
+				l2         <- neighbors[j,2]
+				in.k2      <- which(B==k2)
+				in.l2      <- which(B==l2)
+				n.k2       <- length(in.k2)
+				n.l2       <- length(in.l2)
 
-			k1         <- neighbors[i,1]
-			l1         <- neighbors[i,2]
-			in.k1      <- which(B==k1)
-			in.l1      <- which(B==l1)
-			n.k1       <- length(in.k1)
-			n.l1       <- length(in.l1)
-			k2         <- neighbors[j,1]
-			l2         <- neighbors[j,2]
-			in.k2      <- which(B==k2)
-			in.l2      <- which(B==l2)
-			n.k2       <- length(in.k2)
-			n.l2       <- length(in.l2)
+				# which sites are in pair i?
+				in.i       <- c(in.k1, in.l1)
+				n.i        <- n.k1+n.l1
+				Sigma.i    <- compute_cov(cov, t_theta(theta), D[in.i,in.i])
+				invSigma.i <- chol2inv(chol(Sigma.i))
 
-#			if (k1 != k2 & k1 != l2 & l1 != k2 & l1 != l2) {
-#				next;
-#			}
+				# which sites are in pair j?
+				in.j       <- c(in.k2, in.l2)
+				n.j        <- length(in.j)
+				Sigma.j    <- compute_cov(cov, t_theta(theta), D[in.j,in.j])
+				invSigma.j <- chol2inv(chol(Sigma.j))
 
-			# which sites are in pair i?
-			in.i       <- c(in.k1, in.l1)
-			n.i        <- n.k1+n.l1
-			Sigma.i    <- compute_cov(cov, t_theta(theta), D[in.i,in.i])
-			invSigma.i <- chol2inv(chol(Sigma.i))
+				# compute covariance between pairs of blocks
+				Sigma.ij   <- compute_cov(cov, t_theta(theta), D[c(in.i,in.j),c(in.i,in.j)])
 
-			# which sites are in pair j?
-			in.j       <- c(in.k2, in.l2)
-			n.j        <- length(in.j)
-			Sigma.j    <- compute_cov(cov, t_theta(theta), D[in.j,in.j])
-			invSigma.j <- chol2inv(chol(Sigma.j))
+if (TRUE) {
+				# zero out covariance when these pairs are not neighbors
+				if (!any(neighbors[c(which(neighbors[,1]==k1),which(neighbors[,2]==k1)),] == k2)) {
+					# pair (k1,k2) is zero
+					Sigma.ij[1:n.k1,n.i+1:n.k2] <- 0
+					Sigma.ij[n.i+1:n.k2,1:n.k1] <- 0
+				}
 
-			# compute covariance between pairs of blocks
-			Sigma.ij   <- compute_cov(cov, t_theta(theta), D[c(in.i,in.j),c(in.i,in.j)])
+				if (!any(neighbors[c(which(neighbors[,1]==l1),which(neighbors[,2]==l1)),] == k2)) {
+					# pair (l1,k2) is zero
+					Sigma.ij[n.k1+1:n.l1,n.i+1:n.k2] <- 0
+					Sigma.ij[n.i+1:n.k2,n.k1+1:n.l1] <- 0
+				}
 
-if (FALSE) {
-			if (!any(neighbors[c(which(neighbors[,1]==k1),which(neighbors[,2]==k1)),] == k2)) {
-				# pair (k1,k2) is zero
-				Sigma.ij[1:n.k1,n.i+1:n.k2] <- 0
-				Sigma.ij[n.i+1:n.k2,1:n.k1] <- 0
-			}
+				if (!any(neighbors[c(which(neighbors[,1]==k1),which(neighbors[,2]==k1)),] == l2)) {
+					# pair (k1,l2) is zero
+					Sigma.ij[1:n.k1,n.i+n.k2+1:n.l2] <- 0
+					Sigma.ij[n.i+n.k2+1:n.l2,1:n.k1] <- 0
+				}
 
-			if (!any(neighbors[c(which(neighbors[,1]==l1),which(neighbors[,2]==l1)),] == k2)) {
-				# pair (l1,k2) is zero
-				Sigma.ij[n.k1+1:n.l1,n.i+1:n.k2] <- 0
-				Sigma.ij[n.i+1:n.k2,n.k1+1:n.l1] <- 0
-			}
-
-			if (!any(neighbors[c(which(neighbors[,1]==k1),which(neighbors[,2]==k1)),] == l2)) {
-				# pair (k1,l2) is zero
-				Sigma.ij[1:n.k1,n.i+n.k2+1:n.l2] <- 0
-				Sigma.ij[n.i+n.k2+1:n.l2,1:n.k1] <- 0
-			}
-
-			if (!any(neighbors[c(which(neighbors[,1]==l1),which(neighbors[,2]==l1)),] == l2)) {
-				# pair (l1,l2) is zero
-				Sigma.ij[n.k1+1:n.l1,n.i+n.k2+1:n.l2] <- 0
-				Sigma.ij[n.i+n.k2+1:n.l2,n.k1+1:n.l1] <- 0
-			}
+				if (!any(neighbors[c(which(neighbors[,1]==l1),which(neighbors[,2]==l1)),] == l2)) {
+					# pair (l1,l2) is zero
+					Sigma.ij[n.k1+1:n.l1,n.i+n.k2+1:n.l2] <- 0
+					Sigma.ij[n.i+n.k2+1:n.l2,n.k1+1:n.l1] <- 0
+				}
 }
 
-			if (i == j) {
-				J.beta <- J.beta + t(X[in.i,]) %*% invSigma.i %*% X[in.i,]
+				if (i == j) {
+					# do not add contributions between neighbors in this case
 
-if (FALSE) {
-				sapply(seq.R, function(r) {
-					sapply(r:R, function(s) {
-						if (!theta_fixed[r] & !theta_fixed[s]) {
-							add <- .5*sum(diag( invSigma.i %*% partials[[r]](theta, n.i, in.i) %*% invSigma.i %*% partials[[s]](theta, n.i, in.i) ))
+					# add to beta
+					J.beta <- J.beta + t(X[in.i,]) %*% invSigma.i %*% X[in.i,]
 
-							J.theta[r,s] <<- J.theta[r,s] + add
-							if (r != s) {
-								J.theta[s,r] <<- J.theta[s,r] + add
-							}
-						}
-					})
-				})
-}
-
-			} else {
-				J.beta <- J.beta + t(X[in.i,]) %*% invSigma.i %*% Sigma.ij[1:n.i,n.i+1:n.j] %*% invSigma.j %*% X[in.j,]
-
-				if (j > i) {
+					# add to theta
 					sapply(seq.R, function(r) {
 						sapply(r:R, function(s) {
 							if (!theta_fixed[r] & !theta_fixed[s]) {
-								B.ir <- invSigma.i %*% partials[[r]](theta, n.i, in.i) %*% invSigma.i
-								B.js <- invSigma.j %*% partials[[s]](theta, n.j, in.j) %*% invSigma.j
-								add  <- sum(diag( B.ir %*% Sigma.ij[1:n.i,n.i+1:n.j] %*% B.js %*% Sigma.ij[n.i+1:n.j,1:n.i] ))
+								add <- .5*sum(diag( invSigma.i %*% partials[[r]](theta, n.i, in.i) %*% invSigma.i %*% partials[[s]](theta, n.i, in.i) ))
 
 								J.theta[r,s] <<- J.theta[r,s] + add
 								if (r != s) {
@@ -397,35 +382,57 @@ if (FALSE) {
 							}
 						})
 					})
+				} else {
+					# add to beta
+					J.beta <- J.beta + 2 * t(X[in.i,]) %*% invSigma.i %*% Sigma.ij[1:n.i,n.i+1:n.j] %*% invSigma.j %*% X[in.j,]
+
+					if (j > i) {
+						sapply(seq.R, function(r) {
+							sapply(r:R, function(s) {
+								if (!theta_fixed[r] & !theta_fixed[s]) {
+									B.ir <- invSigma.i %*% partials[[r]](theta, n.i, in.i) %*% invSigma.i
+									B.js <- invSigma.j %*% partials[[s]](theta, n.j, in.j) %*% invSigma.j
+									add  <- sum(diag( B.ir %*% Sigma.ij[1:n.i,n.i+1:n.j] %*% B.js %*% Sigma.ij[n.i+1:n.j,1:n.i] ))
+
+									J.theta[r,s] <<- J.theta[r,s] + add
+									if (r != s) {
+										J.theta[s,r] <<- J.theta[s,r] + add
+									}
+								}
+							})
+						})
+					}
+
 				}
 
 			}
 
 		}
 
-	}
+if (FALSE) {
+		print(round(FI,3))
+		print(round(J.theta,3))
+		print(round(FI %*% solve(J.theta),3))
+}
 
-print(round(FI,3))
-print(round(J.theta,3))
-print(round(FI %*% solve(J.theta),3))
-
-	vcov_theta  <- chol2inv(chol(A %*% chol2inv(chol(J.beta)) %*% A))
-	if (Nnot_fixed > 0) {
-		vcov.theta[which.not_fixed,which.not_fixed] <- chol2inv(chol(FI[which.not_fixed,which.not_fixed] %*%
-			chol2inv(chol(J.theta[which.not_fixed,which.not_fixed])) %*% FI[which.not_fixed,which.not_fixed]))
-	}
+		vcov_beta  <- chol2inv(chol(A %*% chol2inv(chol(J.beta)) %*% A))
+		if (Nnot_fixed > 0) {
+			vcov_theta[which.not_fixed,which.not_fixed] <- chol2inv(chol(FI[which.not_fixed,which.not_fixed] %*%
+				chol2inv(chol(J.theta[which.not_fixed,which.not_fixed])) %*% FI[which.not_fixed,which.not_fixed]))
+		}
+	} # end BCL
 } # end std errors
 
 	# transform theta
 	theta <- t_theta(theta)
 
 	# get the standard errors
-	se_beta  <- sqrt(diag(vcov_theta))
-	se_theta <- as.vector(sqrt(diag(vcov.theta)) * theta)
+	se_beta  <- sqrt(diag(vcov_beta))
+	se_theta <- as.vector(sqrt(diag(vcov_theta)) * theta)
 
 	# transform theta[3] to range form
 	#theta[3]        <- 1/theta[3]
-	se_theta[3]     <- se_theta[3] * theta[3]^2
+	#se_theta[3]     <- se_theta[3] * theta[3]^2
 	#iters_theta[,3] <- 1/iters_theta[,3]
 
 	# return estimates and standard errors
@@ -434,6 +441,6 @@ print(round(FI %*% solve(J.theta),3))
 		iters_theta=iters_theta, iters_ll=iters_ll,
 		beta=beta, theta=theta, ll=ll,
 		se_beta=se_beta, se_theta=se_theta,
-		vcov_theta=vcov_theta, vcov_theta=vcov_theta
+		vcov_beta=vcov_beta, vcov_theta=vcov_theta
 	)
 }
