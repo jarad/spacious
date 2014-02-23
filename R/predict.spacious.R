@@ -106,6 +106,8 @@
 		nB <- 0
 	}
 
+	if (opts$type=="local") engine <- "R"  # C doesn't support local kriging (yet)
+
 	if (engine == "C") {
 		do_sd <- interval=="prediction"
 		local <- opts$type=="local"

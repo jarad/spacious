@@ -7,8 +7,10 @@
 	range  <- quantile(d,p.range)
 
 	vg           <- variog(list(coords=S[points,], data=y[points]), messages=FALSE)
-	partial.sill <- 0.5*vg$v[1]/exp(-vg$u[1]/range)
-	nugget       <- vg$var.mark-partial.sill
+	nugget       <- 0.5*vg$v[1]/exp(-vg$u[1]/range)
+	partial.sill <- vg$var.mark-nugget
+	#partial.sill <- 0.5*vg$v[1]/exp(-vg$u[1]/range)
+	#nugget       <- vg$var.mark-partial.sill
 
 	# make sure initial nugget and partial still aren't too small
 	nugget       <- max(nugget, 0.05)

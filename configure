@@ -670,6 +670,7 @@ ac_user_opts='
 enable_option_checking
 with_cuda
 with_CUDA_BS
+with_debug
 '
       ac_precious_vars='build_alias
 host_alias
@@ -1295,6 +1296,7 @@ Optional Packages:
   --without-PACKAGE       do not use PACKAGE (same as --with-PACKAGE=no)
   --with-cuda=DIR         cuda root [/usr/local/cuda]
   --with-CUDA_BS=SIZE     cuda block size [256]
+  --with-debug            use debug info
 
 Some influential environment variables:
   CC          C compiler command
@@ -4195,6 +4197,20 @@ if test "${with_CUDA_BS+set}" = set; then :
 			CUDA_BS="$withval"
 			if test x"$CUDA_BS" = xyes; then
 				CUDA_BS="256"
+			fi
+
+fi
+
+
+# debug info
+
+# Check whether --with-debug was given.
+if test "${with_debug+set}" = set; then :
+  withval=$with_debug;
+			DEBUG="$withval"
+			if test x"$DEBUG" = xyes; then
+				CFLAGS="${CFLAGS} -g -ggdb"
+				CXXFLAGS="${CXXFLAGS} -g -ggdb"
 			fi
 
 fi

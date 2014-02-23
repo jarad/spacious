@@ -24,7 +24,7 @@ void spacious_fit(
 	// values of theta and log likelihood at each iteration
 	double *iters_theta, double *iters_ll,
 	// fitting control parameters
-	bool *verbose, double *tol, int *max_iter, bool *compute_se,
+	bool *verbose, double *tol, int *max_iter,
 	// parallelization options
 	int *nthreads, bool *gpu
 ) {

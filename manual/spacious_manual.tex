@@ -83,17 +83,17 @@
 \textbf{Ryan J. Parker}\footnote{North Carolina State University},
 \textbf{Jo Eidsvik}\footnote{Norwegian University of Science and Technology},
 \textbf{Brian J. Reich$^1$},
-\textbf{Benjamin Shaby}\footnote{University of California - Berkeley}, and
+\textbf{Benjamin Shaby}\footnote{Penn State University}, and
 \textbf{Jarad Niemi}\footnote{Iowa State University}
 \vspace{24pt}
 
 \today
 \end{center}
 
-{\tt Spacious} in an {\tt R} package to estimate spatial covariance parameters using large geostatistical spatial datasets, and to use these estimates for spatial prediction.
+{\tt Spacious} in an {\tt R} package to estimate spatial covariance parameters using large geostatistical spatial datasets and to use these estimates for spatial prediction.
 To achieve efficient computation, {\tt spacious} uses the parallelizable block composite likelihood approach of \cite{Eidsvik:2013}, which we briefly review in Section~\ref{s:review}.
-In addition to the efficient maximum composite likelihood estimation, {\tt spacious} also provides GPU acceleration for maximum likelihood estimation of the full spatial likelihood.
-This GPU acceleration, however, is limited by the amount of memory available on the GPU.
+In addition to the efficient maximum composite likelihood estimation with {\tt pthreads}, {\tt spacious} also provides GPU acceleration for maximum likelihood estimation of the full spatial likelihood.
+This GPU acceleration for the full likelihood, however, is currently limited by the amount of memory available on the GPU.
 
 In this manual we begin in Section~\ref{s:install} showing how to install {\tt spacious} using the default or parallel computing options with {\tt pthreads} or {\tt CUDA}.
 After a review of the block composite likelihood in Section~\ref{s:review}, we then show how to implement this approach for parameter estimation in Section~\ref{s:estimate} and spatial prediction in Section~\ref{s:predict}.
@@ -107,26 +107,29 @@ The {\tt spacious} package can be downloaded from CRAN and installed using the c
 > install.packages("spacious")
 \end{verbatim}
 
-\subsection{Enabling support for {\tt pthreads}}
+\subsection{Enabling {\tt pthreads} for parallelization with threads}
 
 The block composite likelihood in Section~\ref{s:review} operates on independent pairs of blocks, and thus computations for each pair of blocks can be run in parallel.
 Running these computations in parallel is supported with {\tt pthreads}.
-To enable {\tt pthreads} support, run the command:
+The installation procedure searches for {\tt pthreads} support by default.
+If {\tt pthreads} is not enabled by default, you will need to add the location of {\tt pthreads} to your \verb|LD_LIBRARY_PATH| and run the command:
 
 \begin{verbatim}
-> install.packages("spacious", type="source", configure.args="--with-pthreads")
+> install.packages("spacious", type="source")
 \end{verbatim}
 The {\tt pthreads} library is not natively supported by Windows and has not been tested for use with {\tt spacious}.
 
-\subsection{Enabling support for {\tt CUDA}}
+\subsection{Enabling {\tt CUDA} for GPU acceleration}
 
-Currently, {\tt spacious} accelerates matrix operations for maximum likelihood estimation of full models using {\tt CUDA} and {\tt CUBLAS}.
+Currently, {\tt spacious} can accelerate matrix operations for maximum likelihood estimation of full models using {\tt CUDA} and {\tt CUBLAS}.
 To enable {\tt CUDA} support, run the command:
 
 \begin{verbatim}
 > install.packages("spacious", type="source", configure.args="--with-cuda")
 \end{verbatim}
-Support for {\tt CUDA} is currently limited to release 5.0.
+By default the installation searches for \verb|CUDA_HOME| in {\tt /usr/local/cuda}.
+If another location should be used, change {\tt configure.args} to {\tt --with-cuda=DIR}, where {\tt DIR} specifies the location of \verb|CUDA_HOME|.
+Support for {\tt CUDA} has been tested with the 5.0 release.
 
 \section{Review of the block composite likelihood approach}\label{s:review}
 
@@ -169,7 +172,7 @@ Shown in Figure~\ref{f:data}, the code below plots the response, {\tt anom}, whi
 The dataset also includes regularly-spaced prediction locations and elevations in the {\tt anom.pred.grid} object.
 
 \begin{figure}
-	\caption{Temperature data in Celcius.}\label{f:data}
+	\caption{Temperature anomaly data in Celcius.}\label{f:data}
 	\centering
 	\includegraphics[width=5.5in]{figures/data.pdf}
 \end{figure}
@@ -179,11 +182,11 @@ The dataset also includes regularly-spaced prediction locations and elevations i
 The main call is
 
 \begin{verbatim}
-spacious(formula, data, S,
-         cov = "exp", cov.inits, fixed = list(smoothness = 0.5),
-         blocks = list(type = "cluster", nblocks = round(n/50)),
-         nthreads=1, gpu=FALSE,
-         B, neighbors)
+spacious(formula, data, S, cov = "exp", cov.inits, B, neighbors,
+         fixed = list(smoothness = 0.5),
+         blocks = list(type = "cluster"),
+         verbose = FALSE, tol = 1e-8, maxIter = 100,
+         nthreads = 1, gpu = FALSE, engine = "C")
 \end{verbatim}
 
 The response and mean trend are specified by {\tt formula}, which follows the usual {\tt response $\sim$ sum of predictors} notation.
@@ -195,15 +198,15 @@ The fit with longitude, latitude, and elevation as predictors with default expon
 > summary(fit)
 Coefficients:
    Estimate Std Err P-value
-b0  1.84658 2.5e-01 4.2e-13
-b1  0.00034 2.6e-03 9.0e-01
-b2 -0.00567 4.9e-03 2.5e-01
-b3 -0.00001 3.4e-05 7.6e-01
+b0  1.84659 0.19667    0.00
+b1  0.00034 0.00200    0.87
+b2 -0.00567 0.00378    0.13
+b3 -0.00001 0.00003    0.73
 Spatial parameters
              Estimate Std Err
-Nugget          0.319  0.0084
-Partial Sill    0.055  0.0129
-Range           3.072  1.0475
+Nugget          0.319   0.008
+Partial Sill    0.055   0.010
+Range           3.072   0.845
 \end{verbatim}
 
 Figure \ref{f:converge} gives the convergence plot that results from {\tt plot(fit)}.
@@ -213,33 +216,33 @@ Model convergence can be assessed with the variable {\tt fit\$convergence}.
 When {\tt fit\$convergence} is {\tt FALSE}, this plot may help identify which parameter(s) are not converging.
 
 \begin{figure}
-	\caption{Convergence plot for the temperature data.}\label{f:converge}
+	\caption{Convergence plot for the temperature anomaly data.}\label{f:converge}
 	\centering
 	\includegraphics[width=3in]{figures/converge.pdf}
 \end{figure}
 
 \subsection{Specifying the spatial covariance function}
 The default spatial covariance function is exponential covariance with the nugget, partial sill, and range to be estimated.
-It is also possible to fix (rather than estimate) some of the parameters using the {\tt fixed} option, which is a list with three possible entries: {\tt nugget}, {\tt partial$\underline{\ }$sill}, and {\tt range}.
+It is also possible to fix (rather than estimate) some of the parameters using the {\tt fixed} option, which is a list with three possible entries: {\tt nugget}, {\tt psill}, and {\tt range}.
 For example, {\tt fixed = list(nugget=0)} specifies a spatial covariance with no nugget ($\tau^2=0$).
 Removing the nugget can lead to computational problems due to singular covariance matrices and should be used with caution.
 Here is the fit with $\phi=5$,
 
 \begin{verbatim}
 > fit <- spacious(anom ~ lon + lat + elev, S=S, data=anom.2011,
-                  fixed=list(range=5))
+                  fixed=list(range=0.20))
 > summary(fit)
 Coefficients:
-   Estimate Std Err P-value
-b0  1.8e+00 3.0e-01 1.9e-09
-b1  4.9e-04 3.2e-03 8.8e-01
-b2 -5.2e-03 5.8e-03 3.7e-01
-b3 -1.4e-05 3.2e-05 6.7e-01
+    Estimate  Std Err P-value
+b0  1.823724 0.231828 3.6e-15
+b1  0.000493 0.002418 8.4e-01
+b2 -0.005209 0.004436 2.4e-01
+b3 -0.000014 0.000029 6.3e-01
 Spatial parameters
              Estimate Std Err
-Nugget          0.325  0.0075
-Partial Sill    0.053  0.0151
-Range           5.000  0.0000
+Nugget          0.325       0
+Partial Sill    0.053       0
+Range           5.000       0
 \end{verbatim}
 
 {\tt Spacious} can also accommodate the $\Matern$ covariance using the {\tt cov="matern"} option.
@@ -251,23 +254,23 @@ For example, the code below fits a $\Matern$ covariance with $\nu=1$,
                   cov="matern", fixed=list(smoothness=1))
 > summary(fit)
 Coefficients:
-   Estimate Std Err P-value
-b0  1.8e+00 2.4e-01 4.7e-14
-b1  3.1e-04 2.5e-03 9.0e-01
-b2 -5.6e-03 4.7e-03 2.3e-01
-b3 -1.1e-05 3.3e-05 7.4e-01
+    Estimate  Std Err P-value
+b0  1.845695 0.189774    0.00
+b1  0.000307 0.001922    0.87
+b2 -0.005639 0.003645    0.12
+b3 -0.000011 0.000029    0.70
 Spatial parameters
              Estimate Std Err
-Nugget          0.325  0.0074
-Partial Sill    0.048  0.0117
-Range           4.134  1.0901
-Smoothness      1.000  0.0000
+Nugget          0.325       0
+Partial Sill    0.048       0
+Range           2.067       0
+Smoothness      1.000       0
 \end{verbatim}
 
 Initial values for the spatial covariance parameters can be specified using the {\tt cov.inits} option, which is a list of the same form as {\tt fixed}.   The defaults are
 \begin{verbatim}
 cov.inits = list(nugget = 0.8*var(Y),
-                 partial_sill = 0.2*var(Y),
+                 psill = 0.2*var(Y),
                  range = quantile(dist(S),0.1))
 \end{verbatim}
 It is highly recommended to try several initial values to ensure they all lead to the same solution.
@@ -278,7 +281,7 @@ Selecting the blocking structure that forms the block composite likelihood is a 
 Selecting one or two blocks gives the statistically optimal, but computationally inefficient, full likelihood.
 Selecting a large number of blocks improves computational speed with a trade-off in statistically efficiency.
 The blocking structure is determined by the {\tt blocks} argument, which is specified as a list with two elements: {\tt type} and {\tt nblocks}.
-The {\tt type} argument can be either ``cluster'' or ``regular'', and {\tt nblocks} gives the number of blocks ($M$).
+The {\tt type} argument can be either {\tt "cluster"} or {\tt "regular"}, and {\tt nblocks} gives the number of blocks ($M$).
 If {\tt type = "cluster"}, then the block groups are determined by k-means clustering of the observation locations, {\tt S}.
 If {\tt type = "regular"}, then blocks are taken to be a regular $\sqrt{M}\times\sqrt{M}$ rectangular grid covering the range of {\tt S}.
 Clearly, if {\tt type = "regular"}, then {\tt nblocks} should be a square number.
@@ -302,7 +305,7 @@ The following code fits the composite likelihood with $M=100$ blocks using both 
 > plot(fit_r$grid, add=TRUE)
 \end{verbatim}
 
-The output {\tt B} gives the cluster label assigned to each observation, and is plotted in Figure~\ref{f:blocks}.
+The output {\tt grid} gives the blocking polygons used for each region and is plotted in Figure~\ref{f:blocks}.
 For these data, the regular blocks have many observations in two blocks in Ireland and the Netherlands, which slows computation.
 
 \begin{figure}

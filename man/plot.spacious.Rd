@@ -1,8 +1,8 @@
 \name{plot.spacious}
 \alias{plot.spacious}
-\title{Diagnostic plot or spacious fit}
+\title{Diagnostic plot of spacious fit}
 \description{
-Plots parameter estimates and -2 x log likelihood for each Fisher
+Plots covariance parameter estimates and log-likelihood for each Fisher
 scoring iteration to help diagnose convergence issues.
 }
 \usage{

@@ -1,5 +1,6 @@
 # run code for generating user manual
-options(digits=2)
+#options(digits=2)
+options("scipen"=5, "digits"=2)
 
 if ("package:spacious" %in% search()) {
   # unload the package
@@ -30,7 +31,7 @@ graphics.off()
 if (FALSE) {
 # basic call
 fit <- spacious(anom ~ lon + lat + elev, S=S, data=anom.2011)
-pdf("pdf/manual_fit.pdf")
+pdf("manual/figures/converge.pdf")
 	plot(fit)
 graphics.off()
 print(summary(fit))
@@ -51,8 +52,9 @@ print(summary(fit))
 if (TRUE) {
 # blocking structures
 library(maps)
-#fit_c <- spacious(anom ~ lon + lat + elev, S=S, data=anom.2011, blocks=list(type="cluster"))
-#fit_r <- spacious(anom ~ lon + lat + elev, S=S, data=anom.2011, blocks=list(type="regular"))
+#fit_c <- spacious(anom ~ lon + lat + elev, S=S, data=anom.2011, blocks=list(type="cluster", nblocks=100), verbose=TRUE, nthreads=4)
+fit_r <- spacious(anom ~ lon + lat + elev, S=S, data=anom.2011, blocks=list(type="regular", nblocks=100), verbose=TRUE, nthreads=1)
+done
 
 pdf("pdf/manual_blocks_c.pdf")
 	plot(S, pch=4, xlab="lon", ylab="lat", main="Cluster blocks", cex=0.5)

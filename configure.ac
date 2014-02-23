@@ -74,6 +74,18 @@ AC_ARG_WITH([CUDA_BS],
 			fi
 		])
 
+# debug info
+AC_ARG_WITH([debug],
+	AC_HELP_STRING([--with-debug],
+		[use debug info]),
+		[
+			DEBUG="$withval"
+			if test x"$DEBUG" = xyes; then
+				CFLAGS="${CFLAGS} -g -ggdb"
+				CXXFLAGS="${CXXFLAGS} -g -ggdb"
+			fi
+		])
+
 AC_SUBST(CC)
 AC_SUBST(CXX)
 AC_SUBST(R_HOME)

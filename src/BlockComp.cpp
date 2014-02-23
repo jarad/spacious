@@ -773,6 +773,8 @@ bool BlockComp::computeLogLikPair(double *log_lik, int pair, double *Sigma, doub
 	int blk2 = mNeighbors[pair+mNpairs];
 	int N_in_pair = mNB[blk1] + mNB[blk2];
 
+	if (mNB[blk1] == 0 || mNB[blk2] == 0) { return(true); }
+
 	int i,j;
 	int c;
 
@@ -945,7 +947,7 @@ bool BlockComp::computeVCov(double *vcov_beta, double *vcov_theta) {
 			// process each block pair in order
 			for (pair1 = 0; pair1 < mNpairs; pair1++) {
 				for (pair2 = pair1+1; pair2 < mNpairs; pair2++) {
-					if (!computeVCovPair(J_beta, J_theta, pair1, pair2)) {
+					if (!computeVCovPair(J_beta, J_theta, mTheta_P, pair1, pair2)) {
 						// error updating these pairs
 						MSG("computeVCov(): Unable to compute contribution for pairs %d/%d\n", pair1, pair2);
 						return(false);
@@ -1082,13 +1084,21 @@ bool BlockComp::computeVCov(double *vcov_beta, double *vcov_theta) {
 	return(true);
 }
 
-bool BlockComp::computeVCovPair(double *J_beta, double *J_theta, int pair1, int pair2) {
+bool BlockComp::computeVCovPair(double *J_beta, double *J_theta, double *P, int pair1, int pair2) {
 	int p1_blk1 = mNeighbors[pair1];
 	int p1_blk2 = mNeighbors[pair1+mNpairs];
 	int p2_blk1 = mNeighbors[pair2];
 	int p2_blk2 = mNeighbors[pair2+mNpairs];
+
+	if (mNB[p1_blk1] == 0 || mNB[p1_blk2] == 0 || mNB[p2_blk1] == 0 || mNB[p2_blk2] == 0) {
+		// one of the blocks has zero observations
+		return(true);
+	}
+
 	int N_in_pair1 = mNB[p1_blk1] + mNB[p1_blk2];
 	int N_in_pair2 = mNB[p2_blk1] + mNB[p2_blk2];
+	int maxPair = N_in_pair1;
+	if (N_in_pair2 > maxPair) maxPair = N_in_pair2;
 
 	if (pair1 == pair2) {
 		// should not be executed on the same two pairs
@@ -1104,12 +1114,10 @@ bool BlockComp::computeVCovPair(double *J_beta, double *J_theta, int pair1, int 
 
 	int i,j,k,l,m,t;
 
-	double Sigma_1[mMaxPair*mMaxPair];
-	double Sigma_2[mMaxPair*mMaxPair];
-	double crossD[mMaxPair*mMaxPair];
-	double crossSigma_12[mMaxPair*mMaxPair];
-	double invSigma_1[mMaxPair*mMaxPair];
-	double invSigma_2[mMaxPair*mMaxPair];
+	double *crossD;
+	double *crossSigma_12;
+	double *invSigma_1;
+	double *invSigma_2;
 
 	char cN = 'N';
 	double zero = 0.0;
@@ -1117,41 +1125,21 @@ bool BlockComp::computeVCovPair(double *J_beta, double *J_theta, int pair1, int 
 	int elem;
 	int icol,jcol;
 
-	double beta_add1[mMaxPair*mMaxPair];
-	double beta_add2[mMaxPair*mMaxPair];
+	double *beta_add1;
+	double *beta_add2;
 
 	int c1 = 0;
 	int c2 = 0;
 	bool diag;
-	double B[mMaxPair*mMaxPair];
-	double B_1[mMaxPair*mMaxPair];
-	double B_2[mMaxPair*mMaxPair];
-	double P[mMaxPair*mMaxPair];
+	double *B;
+	double *B_1;
+	double *B_2;
 	double add;
 	double a1,a2;
 
-	// compute covariance for observations in pair 1
-	mCov->compute(Sigma_1, mTheta, mNB[p1_blk1], mWithinD[p1_blk1], mNB[p1_blk2], mWithinD[p1_blk2], mBetweenD[pair1]);
-
-	// compute covariance for observations in pair 2
-	mCov->compute(Sigma_2, mTheta, mNB[p2_blk1], mWithinD[p2_blk1], mNB[p2_blk2], mWithinD[p2_blk2], mBetweenD[pair2]);
-
-	// invert covariances
-	for (i = 0; i < N_in_pair1; i++) for (j = i; j < N_in_pair1; j++) invSigma_1[usymi(i,j,N_in_pair1)] = Sigma_1[usymi(i,j,N_in_pair1)];
-	if (chol2inv(N_in_pair1, invSigma_1)) {
-		MSG("computeVCovPair(%d,%d): Unable to invert covariance for pair 1\n", pair1, pair2);
-		return(false);
-	}
-	for (i = 0; i < N_in_pair1; i++) for (j = i; j < N_in_pair1; j++) invSigma_1[lsymi(i,j,N_in_pair1)] = invSigma_1[usymi(i,j,N_in_pair1)];
-
-	for (i = 0; i < N_in_pair2; i++) for (j = i; j < N_in_pair2; j++) invSigma_2[usymi(i,j,N_in_pair2)] = Sigma_2[usymi(i,j,N_in_pair2)];
-	if (chol2inv(N_in_pair2, invSigma_2)) {
-		MSG("computeVCovPair(%d,%d): Unable to invert covariance for pair 2\n", pair1, pair2);
-		return(false);
-	}
-	for (i = 0; i < N_in_pair2; i++) for (j = i; j < N_in_pair2; j++) invSigma_2[lsymi(i,j,N_in_pair2)] = invSigma_2[usymi(i,j,N_in_pair2)];
-
 	// compute cross covariance for observations in 1 and 2
+	crossD = (double *)malloc(sizeof(double)*N_in_pair1*N_in_pair2);
+	crossSigma_12 = (double *)malloc(sizeof(double)*N_in_pair1*N_in_pair2);
 	for (i = 0; i < mNB[p1_blk1]; i++)
 		for (j = 0; j < mNB[p2_blk1]; j++)
 			crossD[i + j*N_in_pair1] = sqrt(
@@ -1173,10 +1161,33 @@ bool BlockComp::computeVCovPair(double *J_beta, double *J_theta, int pair1, int 
 			crossD[mNB[p1_blk1] + i + (mNB[p2_blk1]+j)*N_in_pair1] = sqrt(
 				pow(mS[mWhichB[p1_blk2][i]]-mS[mWhichB[p2_blk2][j]], 2) + pow(mS[mWhichB[p1_blk2][i]+mN]-mS[mWhichB[p2_blk2][j]+mN], 2)
 			);
-
 	mCov->computeCross(crossSigma_12, mTheta, N_in_pair1, N_in_pair2, crossD, false);
+	free(crossD);
+
+	// compute covariance for observations in pair 1
+	invSigma_1 = (double *)malloc(sizeof(double)*N_in_pair1*N_in_pair1);
+	mCov->compute(invSigma_1, mTheta, mNB[p1_blk1], mWithinD[p1_blk1], mNB[p1_blk2], mWithinD[p1_blk2], mBetweenD[pair1]);
+
+	// compute covariance for observations in pair 2
+	invSigma_2 = (double *)malloc(sizeof(double)*N_in_pair2*N_in_pair2);
+	mCov->compute(invSigma_2, mTheta, mNB[p2_blk1], mWithinD[p2_blk1], mNB[p2_blk2], mWithinD[p2_blk2], mBetweenD[pair2]);
+
+	// invert covariances
+	if (chol2inv(N_in_pair1, invSigma_1)) {
+		MSG("computeVCovPair(%d,%d): Unable to invert covariance for pair 1\n", pair1, pair2);
+		return(false);
+	}
+	for (i = 0; i < N_in_pair1; i++) for (j = i; j < N_in_pair1; j++) invSigma_1[lsymi(i,j,N_in_pair1)] = invSigma_1[usymi(i,j,N_in_pair1)];
+
+	if (chol2inv(N_in_pair2, invSigma_2)) {
+		MSG("computeVCovPair(%d,%d): Unable to invert covariance for pair 2\n", pair1, pair2);
+		return(false);
+	}
+	for (i = 0; i < N_in_pair2; i++) for (j = i; j < N_in_pair2; j++) invSigma_2[lsymi(i,j,N_in_pair2)] = invSigma_2[usymi(i,j,N_in_pair2)];
 
 	// add to beta
+	beta_add1 = (double *)malloc(sizeof(double)*N_in_pair1*N_in_pair2);
+	beta_add2 = (double *)malloc(sizeof(double)*N_in_pair1*N_in_pair2);
 
 	// beta_add1 = invSigma_1 x Sigma_12
 	dgemm_(&cN, &cN, /*m*/&N_in_pair1, /*n*/&N_in_pair2, /*k*/&N_in_pair1, /*alpha*/&one, /*A*/invSigma_1, /*lda*/&N_in_pair1,
@@ -1230,12 +1241,19 @@ bool BlockComp::computeVCovPair(double *J_beta, double *J_theta, int pair1, int 
 		}
 	}
 
+	free(beta_add1);
+	free(beta_add2);
+
 	// add to theta
+	B = (double *)malloc(sizeof(double)*maxPair*maxPair);
+	B_1 = (double *)malloc(sizeof(double)*N_in_pair1*N_in_pair1);
+	B_2 = (double *)malloc(sizeof(double)*N_in_pair2*N_in_pair2);
+
 	for (i = 0; i < mNtheta; i++) {
 		if (mFixed[i]) continue;
 
 		// construct B_1 = inv(Sigma_1) x P[i] x inv(Sigma_1)
-		for (k = 0; k < mMaxPair*mMaxPair; k++) B_1[k] = 0;
+		for (k = 0; k < N_in_pair1*N_in_pair1; k++) B_1[k] = 0;
 		mCov->partials(P, &diag, i, mTheta, mThetaT, mNB[p1_blk1], mWithinD[p1_blk1], mNB[p1_blk2], mWithinD[p1_blk2], mBetweenD[pair1]);
 
 		if (diag) {
@@ -1257,7 +1275,7 @@ bool BlockComp::computeVCovPair(double *J_beta, double *J_theta, int pair1, int 
 			if (mFixed[j]) continue;
 
 			// construct B_2 = inv(Sigma_2) x P[j] x inv(Sigma_2)
-			for (k = 0; k < mMaxPair*mMaxPair; k++) B_2[k] = 0;
+			for (k = 0; k < N_in_pair2*N_in_pair2; k++) B_2[k] = 0;
 			mCov->partials(P, &diag, j, mTheta, mThetaT, mNB[p2_blk1], mWithinD[p2_blk1], mNB[p2_blk2], mWithinD[p2_blk2], mBetweenD[pair2]);
 
 			if (diag) {
@@ -1301,6 +1319,13 @@ bool BlockComp::computeVCovPair(double *J_beta, double *J_theta, int pair1, int 
 		c1++;
 	}
 
+	free(crossSigma_12);
+	free(invSigma_1);
+	free(invSigma_2);
+	free(B);
+	free(B_1);
+	free(B_2);
+
 	return(true);
 }
 
@@ -1337,7 +1362,7 @@ void *BlockComp::computeVCovThread(void *work) {
 			break;
 		}
 
-		if (!bc->computeVCovPair(bc->mBeta_A_t[id], bc->mTheta_H_t[id], pair1, pair2)) {
+		if (!bc->computeVCovPair(bc->mBeta_A_t[id], bc->mTheta_H_t[id], bc->mTheta_P_t[id], pair1, pair2)) {
 			// error updating this pair
 			bc->mThreadStatus[id] = false;
 			return(NULL);
@@ -1906,6 +1931,8 @@ bool BlockComp::updateBetaPair(int pair, double *Sigma, double *A, double *b) {
 	int N_in_pair = mNB[blk1] + mNB[blk2];
 	int i,j,icol,jcol,k,l,selem;
 
+	if (mNB[blk1] == 0 || mNB[blk2] == 0) { return(true); }
+
 	if (!mConsMem) {
 		// fill in covariance matrix between these two blocks
 		mCov->compute(Sigma, mTheta, mNB[blk1], mWithinD[blk1], mNB[blk2], mWithinD[blk2], mBetweenD[pair]);
@@ -2405,6 +2432,8 @@ bool BlockComp::updateThetaPair(int pair, double *Sigma, double **W, double *H, 
 	int blk1 = mNeighbors[pair];
 	int blk2 = mNeighbors[pair+mNpairs];
 	int N_in_pair = mNB[blk1] + mNB[blk2];
+
+	if (mNB[blk1] == 0 || mNB[blk2] == 0) { return(true); }
 
 	int i,j,k,l;
 	int iH,jH;       // used to fill hessian properly when params fixed

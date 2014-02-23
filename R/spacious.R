@@ -5,8 +5,7 @@
 	B, neighbors,
 	fixed=list(smoothness=0.5),             # fixed parameters
 	blocks=list(type="cluster"),            # blocking style
-	verbose=FALSE, tol=1e-8, maxIter=25,    # algorithm control params
-	compute_se=FALSE, compute_diag=FALSE,
+	verbose=FALSE, tol=1e-8, maxIter=100,    # algorithm control params
 	nthreads=1, gpu=FALSE,
 	engine="C"                              # use C or R implementation?
 ) {
@@ -222,7 +221,7 @@
 		          # values of theta and log likelihood at each iteration
 		          iters_theta=as.double(rep(NA, (maxIter+1)*R)), iters_ll=as.double(rep(NA, maxIter+1)),
 		          # fitting control parameters
-		          verbose=as.logical(verbose), tol=as.double(tol), max_iter=as.integer(maxIter), compute_se=as.logical(compute_se),
+		          verbose=as.logical(verbose), tol=as.double(tol), max_iter=as.integer(maxIter),
 		          # parallelization options
 		          nthreads=as.integer(nthreads), gpu=as.logical(gpu),
 		          NAOK=TRUE

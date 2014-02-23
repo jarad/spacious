@@ -78,7 +78,7 @@ private:
 	bool computeLogLikPair(double *log_lik, int pair, double *Sigma, double *resids, double *q);
 
 	bool computeVCov(double *vcov_beta, double *vcov_theta);
-	bool computeVCovPair(double *J_beta, double *J_theta, int pair1, int pair2);
+	bool computeVCovPair(double *J_beta, double *J_theta, double *P, int pair1, int pair2);
 
 	void computeFitted();
 	void computeFitted(int n, double *fitted, double *X);
