@@ -35,6 +35,8 @@ public:
 	virtual void transformToReal(double *theta) = 0;
 	// transform params from real line
 	virtual void transformFromReal(double *theta) = 0;
+	// compute gradient of transformed params
+	virtual void gradTrans(double *theta) = 0;
 
 protected:
 	int     mNparams;
@@ -52,6 +54,7 @@ public:
 	                      int n1, double *D1, int n2, double *D2, double *Dc, bool packed = false);
 	virtual void transformToReal(double *theta);
 	virtual void transformFromReal(double *theta);
+	virtual void gradTrans(double *theta);
 
 private:
 };
@@ -68,6 +71,7 @@ public:
 	                      int n1, double *D1, int n2, double *D2, double *Dc, bool packed = false);
 	virtual void transformToReal(double *theta);
 	virtual void transformFromReal(double *theta);
+	virtual void gradTrans(double *theta);
 
 private:
 	double rho(double d, double *theta, double *work, int partial=0);  // correlation based on distance d and parameters theta

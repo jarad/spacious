@@ -106,6 +106,9 @@ void spacious_fit(
 	blk->getFitted(fitted);
 	blk->getResiduals(resids);
 
+	// get standard errors
+	blk->getStdErrs(se_beta, vcov_beta, se_theta, vcov_theta);
+
 	delete blk;
 	return;
 }

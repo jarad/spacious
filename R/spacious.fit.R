@@ -296,13 +296,14 @@ if (TRUE) { # compute standard errors
 			vcov_theta[which.not_fixed,which.not_fixed] <- chol2inv(chol(FI[which.not_fixed,which.not_fixed]))
 		}
 	} else { # BCL
-		J.beta  <- matrix(0, nrow=p, ncol=p)
+		J.beta  <- A #matrix(0, nrow=p, ncol=p)
 		J.theta <- FI
 
 		for (i in 1:nrow(neighbors)) {
-			for (j in 1:nrow(neighbors)) {
-				# do pairs i and j have a common block?
+			for (j in i:nrow(neighbors)) {
+				if (j <= i) next;
 
+				# do pairs i and j have a common block?
 				if (!any(neighbors[i,] == neighbors[j,1]) & !any(neighbors[i,] == neighbors[j,2])) {
 					# none in common; skip this pair
 					next;
@@ -327,16 +328,7 @@ if (TRUE) { # compute standard errors
 				Sigma.i    <- compute_cov(cov, t_theta(theta), D[in.i,in.i])
 				invSigma.i <- chol2inv(chol(Sigma.i))
 
-				# which sites are in pair j?
-				in.j       <- c(in.k2, in.l2)
-				n.j        <- length(in.j)
-				Sigma.j    <- compute_cov(cov, t_theta(theta), D[in.j,in.j])
-				invSigma.j <- chol2inv(chol(Sigma.j))
-
-				# compute covariance between pairs of blocks
-				Sigma.ij   <- compute_cov(cov, t_theta(theta), D[c(in.i,in.j),c(in.i,in.j)])
-
-if (TRUE) {
+if (FALSE) {
 				# zero out covariance when these pairs are not neighbors
 				if (!any(neighbors[c(which(neighbors[,1]==k1),which(neighbors[,2]==k1)),] == k2)) {
 					# pair (k1,k2) is zero
@@ -366,9 +358,12 @@ if (TRUE) {
 				if (i == j) {
 					# do not add contributions between neighbors in this case
 
+if (FALSE) { # this already comes from A
 					# add to beta
 					J.beta <- J.beta + t(X[in.i,]) %*% invSigma.i %*% X[in.i,]
+}
 
+if (FALSE) { # this already comes from FI
 					# add to theta
 					sapply(seq.R, function(r) {
 						sapply(r:R, function(s) {
@@ -382,10 +377,23 @@ if (TRUE) {
 							}
 						})
 					})
+}
 				} else {
-					# add to beta
-					J.beta <- J.beta + 2 * t(X[in.i,]) %*% invSigma.i %*% Sigma.ij[1:n.i,n.i+1:n.j] %*% invSigma.j %*% X[in.j,]
+					# which sites are in pair j?
+					in.j       <- c(in.k2, in.l2)
+					n.j        <- length(in.j)
+					Sigma.j    <- compute_cov(cov, t_theta(theta), D[in.j,in.j])
+					invSigma.j <- chol2inv(chol(Sigma.j))
 
+					# compute covariance between pairs of blocks
+					Sigma.ij   <- compute_cov(cov, t_theta(theta), D[c(in.i,in.j),c(in.i,in.j)])
+
+					# add to beta
+					#J.beta <- J.beta + t(X[in.i,]) %*% invSigma.i %*% Sigma.ij[1:n.i,n.i+1:n.j] %*% invSigma.j %*% X[in.j,]
+					tmp <- t(X[in.i,]) %*% invSigma.i %*% Sigma.ij[1:n.i,n.i+1:n.j] %*% invSigma.j %*% X[in.j,]
+					J.beta <- J.beta + tmp + t(tmp)
+
+					# add to theta
 					if (j > i) {
 						sapply(seq.R, function(r) {
 							sapply(r:R, function(s) {
@@ -409,6 +417,7 @@ if (TRUE) {
 
 		}
 
+
 if (FALSE) {
 		print(round(FI,3))
 		print(round(J.theta,3))
@@ -420,6 +429,7 @@ if (FALSE) {
 			vcov_theta[which.not_fixed,which.not_fixed] <- chol2inv(chol(FI[which.not_fixed,which.not_fixed] %*%
 				chol2inv(chol(J.theta[which.not_fixed,which.not_fixed])) %*% FI[which.not_fixed,which.not_fixed]))
 		}
+
 	} # end BCL
 } # end std errors
 

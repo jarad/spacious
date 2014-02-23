@@ -881,6 +881,473 @@ void *BlockComp::computeLogLikThread(void *work) {
 }
 #endif
 
+void BlockComp::getStdErrs(double *sd_beta, double *vcov_beta, double *sd_theta, double *vcov_theta) {
+	int i;
+
+	if (!computeVCov(vcov_beta, vcov_theta)) {
+		MSG("getStdErrs(): Unable to compute standard errors\n");
+	}
+
+	for (i = 0; i < mNbeta;  i++) sd_beta[i]  = sqrt(vcov_beta[i + i*mNbeta]);
+	for (i = 0; i < mNtheta; i++) sd_theta[i] = sqrt(vcov_theta[i + i*mNtheta]);
+}
+
+// compute standard errors and covariance matrices for betas and thetas
+// note: this assumes we just fit a model and have associated variables populated
+bool BlockComp::computeVCov(double *vcov_beta, double *vcov_theta) {
+	int i,j;
+	int pair1,pair2;
+	double gradTheta[mNtheta];
+	double D[mNtheta*mNtheta];
+
+	if (!mHasFit) {
+		MSG("computeVCov(): must have fit to compute covariance matrix of parameters\n");
+		return(false);
+	}
+
+	// initialization
+	for (i = 0; i < mNbeta*mNbeta; i++)   vcov_beta[i]  = 0;
+	for (i = 0; i < mNtheta*mNtheta; i++) vcov_theta[i] = 0;
+
+	if (mLikForm == Block) {
+		double J_beta[mNbeta*mNbeta];
+		double J_theta[mNtheta*mNtheta];
+
+		// invert mBeta_A
+		if (chol2inv(mNbeta, mBeta_A)) {
+			MSG("computeVCov(): Unable to invert mBeta_A\n");
+			return(false);
+		}
+		for (i = 0; i < mNbeta; i++) for (j = i+1; j < mNbeta; j++) mBeta_A[lsymi(i,j,mNbeta)] = mBeta_A[usymi(i,j,mNbeta)];
+
+		// invert mTheta_H
+		if (chol2inv((mNtheta-mNfixed), mTheta_H)) {
+			MSG("computeVCov(): Unable to invert mTheta_H\n");
+			return(false);
+		}
+		for (i = 0; i < (mNtheta-mNfixed); i++)
+			for (j = i+1; j < (mNtheta-mNfixed); j++)
+				mTheta_H[lsymi(i,j,mNtheta-mNfixed)] = mTheta_H[usymi(i,j,mNtheta-mNfixed)];
+
+		// start beta with A
+		for (i = 0; i < mNbeta; i++)
+			for (j = 0; j < mNbeta; j++)
+				J_beta[i + j*mNbeta]  = mBeta_A[usymi(i,j,mNbeta)];
+
+		// start theta with H (Fisher information)
+		for (i = 0; i < (mNtheta-mNfixed); i++)
+			for (j = 0; j < (mNtheta-mNfixed); j++)
+				J_theta[i + j*(mNtheta-mNfixed)] = mTheta_H[usymi(i,j,mNtheta-mNfixed)];
+
+#ifdef PTHREAD
+		if (mNthreads <= 1) {
+#endif
+			// process each block pair in order
+			for (pair1 = 0; pair1 < mNpairs; pair1++) {
+				for (pair2 = pair1+1; pair2 < mNpairs; pair2++) {
+					if (!computeVCovPair(J_beta, J_theta, pair1, pair2)) {
+						// error updating these pairs
+						MSG("computeVCov(): Unable to compute contribution for pairs %d/%d\n", pair1, pair2);
+						return(false);
+					}
+				}
+			}
+#ifdef PTHREAD
+		} else {
+			// use threads to process each block pair
+
+			// setup mutex
+			pthread_mutex_init(&mPairMutex, NULL);
+			mPair1_t    = 0;
+			mPair2_t    = 0;
+
+			// create threads
+			for (i = 0; i < mNthreads; i++) {
+				mThreadStatus[i]        = true;
+				mThreadWork[i]->id      = i;
+				mThreadWork[i]->bc      = this;
+
+				pthread_create(&mThreads[i], NULL,
+					&BlockComp::computeVCovThread,
+					(void *)mThreadWork[i]
+				);
+
+			}
+
+			// wait for all threads to complete
+			for (i = 0; i < mNthreads; i++) {
+				pthread_join(mThreads[i], 0);
+			}
+
+			// destroy mutex
+			pthread_mutex_destroy(&mPairMutex);
+
+			// did we have any errors?
+			for (i = 0; i < mNthreads; i++) {
+				if (!mThreadStatus[i]) {
+					MSG("computeLogLik(): Error processing thread %d.\n", i);
+					return(false);
+				}
+			}
+
+			// combine results from each thread
+			for (j = 0; j < mNthreads; j++) {
+				for (i = 0; i < mNbeta*mNbeta; i++) { J_beta[i] += mBeta_A_t[j][i]; }
+				for (i = 0; i < mNtheta*mNtheta; i++) { J_theta[i] += mTheta_H_t[j][i]; }
+			}
+		}
+#endif
+
+		char cN = 'N';
+		double one = 1.0;
+		double zero = 0.0;
+		double B[mNbeta*mNbeta];
+
+		// invert J_beta
+		if (chol2inv(mNbeta, J_beta)) {
+			MSG("computeVCov(): Unable to invert J_beta\n");
+			return(false);
+		}
+		for (i = 0; i < mNbeta; i++) for (j = i+1; j < mNbeta; j++) J_beta[lsymi(i,j,mNbeta)] = J_beta[usymi(i,j,mNbeta)];
+
+		// compute inv( mBeta_A x inv(J_beta) x mBeta_A )
+		dgemm_(&cN, &cN, &mNbeta, &mNbeta, &mNbeta, &one, mBeta_A, &mNbeta, J_beta, &mNbeta, &zero, B, &mNbeta);
+		dgemm_(&cN, &cN, &mNbeta, &mNbeta, &mNbeta, &one, B, &mNbeta, mBeta_A, &mNbeta, &zero, vcov_beta, &mNbeta);
+
+		if (chol2inv(mNbeta, vcov_beta)) {
+			MSG("computeVCov(): Unable to invert vcov_beta\n");
+			return(false);
+		}
+
+		double T[mNtheta*mNtheta];
+
+		// invert J_theta
+		if (chol2inv(mNtheta, J_theta)) {
+			MSG("computeVCov(): Unable to invert J_theta\n");
+			return(false);
+		}
+		for (i = 0; i < mNtheta; i++) for (j = i+1; j < mNtheta; j++) J_theta[lsymi(i,j,mNtheta)] = J_theta[usymi(i,j,mNtheta)];
+
+		// compute inv( mTheta_H x inv(J_theta) x mTheta_H )
+		dgemm_(&cN, &cN, &mNtheta, &mNtheta, &mNtheta, &one, mTheta_H, &mNtheta, J_theta, &mNtheta, &zero, T, &mNtheta);
+		dgemm_(&cN, &cN, &mNtheta, &mNtheta, &mNtheta, &one, T, &mNtheta, mTheta_H, &mNtheta, &zero, vcov_theta, &mNtheta);
+
+		if (chol2inv(mNtheta, vcov_theta)) {
+			MSG("computeVCov(): Unable to invert vcov_theta\n");
+			return(false);
+		}
+
+	} else if (mLikForm == Full) {
+		// covariance matrix of beta is in mBeta_A
+		for (i = 0; i < mNbeta; i++)
+			for (j = 0; j < mNbeta; j++)
+				vcov_beta[i + j*mNbeta] = mBeta_A[usymi(i,j,mNbeta)];
+
+		// covariance matrix of theta is in mTheta_H
+		if (!updateTheta(true)) {
+			MSG("computeVCov(): Unable to update Fisher information for theta\n");
+			return(false);
+		}
+
+		for (i = 0; i < (mNtheta-mNfixed); i++)
+			for (j = 0; j < (mNtheta-mNfixed); j++)
+				vcov_theta[i + j*mNtheta] = mTheta_H[usymi(i,j,mNtheta-mNfixed)];
+	}
+
+//for (i = 0; i < mNbeta; i++) { for (j = 0; j < mNbeta; j++) { MSG("%.2f ", vcov_beta[i+j*mNbeta]); } MSG("\n"); }
+//for (i = 0; i < mNtheta; i++) { for (j = 0; j < mNtheta; j++) { MSG("%.2f ", vcov_theta[i+j*mNtheta]); } MSG("\n"); }
+
+	for (i = 0; i < mNbeta; i++) for (j = i+1; j < mNbeta; j++) vcov_beta[lsymi(i,j,mNbeta)] = vcov_beta[usymi(i,j,mNbeta)];
+	for (i = 0; i < mNtheta; i++) for (j = i+1; j < mNtheta; j++) vcov_theta[lsymi(i,j,mNtheta)] = vcov_theta[usymi(i,j,mNtheta)];
+
+	// save unconstrained covariance
+	for (i = 0; i < mNtheta; i++)
+		for (j = 0; j < mNtheta; j++)
+			D[i + j*mNtheta] = vcov_theta[i + j*mNtheta];
+
+	// transform covariance to constrained scale
+	for (i = 0; i < mNtheta; i++) gradTheta[i] = mThetaT[i];
+	mCov->gradTrans(gradTheta);
+
+	for (i = 0; i < mNtheta; i++) {
+		for (j = 0; j < mNtheta; j++) {
+			if (mFixed[i] || mFixed[j]) {
+				vcov_theta[i + j*mNtheta] = 0;
+			} else {
+				vcov_theta[i + j*mNtheta] = gradTheta[i]*gradTheta[j]*D[i + j*(mNtheta-mNfixed)];
+			}
+		}
+	}
+
+	return(true);
+}
+
+bool BlockComp::computeVCovPair(double *J_beta, double *J_theta, int pair1, int pair2) {
+	int p1_blk1 = mNeighbors[pair1];
+	int p1_blk2 = mNeighbors[pair1+mNpairs];
+	int p2_blk1 = mNeighbors[pair2];
+	int p2_blk2 = mNeighbors[pair2+mNpairs];
+	int N_in_pair1 = mNB[p1_blk1] + mNB[p1_blk2];
+	int N_in_pair2 = mNB[p2_blk1] + mNB[p2_blk2];
+
+	if (pair1 == pair2) {
+		// should not be executed on the same two pairs
+		MSG("computeVCovPair() should not be called with same pair (%d, %d)\n", pair1, pair2);
+		return(false);
+	}
+
+	// check to see if any of the pairs share common blocks
+	if (!(p1_blk1 == p2_blk1 || p1_blk1 == p2_blk2 || p1_blk2 == p2_blk1 || p1_blk2 == p2_blk2)) {
+		// none in common, so we don't add contributions from these
+		return(true);
+	}
+
+	int i,j,k,l,m,t;
+
+	double Sigma_1[mMaxPair*mMaxPair];
+	double Sigma_2[mMaxPair*mMaxPair];
+	double crossD[mMaxPair*mMaxPair];
+	double crossSigma_12[mMaxPair*mMaxPair];
+	double invSigma_1[mMaxPair*mMaxPair];
+	double invSigma_2[mMaxPair*mMaxPair];
+
+	char cN = 'N';
+	double zero = 0.0;
+	double one = 1.0;
+	int elem;
+	int icol,jcol;
+
+	double beta_add1[mMaxPair*mMaxPair];
+	double beta_add2[mMaxPair*mMaxPair];
+
+	int c1 = 0;
+	int c2 = 0;
+	bool diag;
+	double B[mMaxPair*mMaxPair];
+	double B_1[mMaxPair*mMaxPair];
+	double B_2[mMaxPair*mMaxPair];
+	double P[mMaxPair*mMaxPair];
+	double add;
+	double a1,a2;
+
+	// compute covariance for observations in pair 1
+	mCov->compute(Sigma_1, mTheta, mNB[p1_blk1], mWithinD[p1_blk1], mNB[p1_blk2], mWithinD[p1_blk2], mBetweenD[pair1]);
+
+	// compute covariance for observations in pair 2
+	mCov->compute(Sigma_2, mTheta, mNB[p2_blk1], mWithinD[p2_blk1], mNB[p2_blk2], mWithinD[p2_blk2], mBetweenD[pair2]);
+
+	// invert covariances
+	for (i = 0; i < N_in_pair1; i++) for (j = i; j < N_in_pair1; j++) invSigma_1[usymi(i,j,N_in_pair1)] = Sigma_1[usymi(i,j,N_in_pair1)];
+	if (chol2inv(N_in_pair1, invSigma_1)) {
+		MSG("computeVCovPair(%d,%d): Unable to invert covariance for pair 1\n", pair1, pair2);
+		return(false);
+	}
+	for (i = 0; i < N_in_pair1; i++) for (j = i; j < N_in_pair1; j++) invSigma_1[lsymi(i,j,N_in_pair1)] = invSigma_1[usymi(i,j,N_in_pair1)];
+
+	for (i = 0; i < N_in_pair2; i++) for (j = i; j < N_in_pair2; j++) invSigma_2[usymi(i,j,N_in_pair2)] = Sigma_2[usymi(i,j,N_in_pair2)];
+	if (chol2inv(N_in_pair2, invSigma_2)) {
+		MSG("computeVCovPair(%d,%d): Unable to invert covariance for pair 2\n", pair1, pair2);
+		return(false);
+	}
+	for (i = 0; i < N_in_pair2; i++) for (j = i; j < N_in_pair2; j++) invSigma_2[lsymi(i,j,N_in_pair2)] = invSigma_2[usymi(i,j,N_in_pair2)];
+
+	// compute cross covariance for observations in 1 and 2
+	for (i = 0; i < mNB[p1_blk1]; i++)
+		for (j = 0; j < mNB[p2_blk1]; j++)
+			crossD[i + j*N_in_pair1] = sqrt(
+				pow(mS[mWhichB[p1_blk1][i]]-mS[mWhichB[p2_blk1][j]], 2) + pow(mS[mWhichB[p1_blk1][i]+mN]-mS[mWhichB[p2_blk1][j]+mN], 2)
+			);
+	for (i = 0; i < mNB[p1_blk2]; i++)
+		for (j = 0; j < mNB[p2_blk1]; j++)
+			crossD[mNB[p1_blk1] + i + j*N_in_pair1] = sqrt(
+				pow(mS[mWhichB[p1_blk2][i]]-mS[mWhichB[p2_blk1][j]], 2) + pow(mS[mWhichB[p1_blk2][i]+mN]-mS[mWhichB[p2_blk1][j]+mN], 2)
+			);
+
+	for (i = 0; i < mNB[p1_blk1]; i++)
+		for (j = 0; j < mNB[p2_blk2]; j++)
+			crossD[i + (mNB[p2_blk1]+j)*N_in_pair1] = sqrt(
+				pow(mS[mWhichB[p1_blk1][i]]-mS[mWhichB[p2_blk2][j]], 2) + pow(mS[mWhichB[p1_blk1][i]+mN]-mS[mWhichB[p2_blk2][j]+mN], 2)
+			);
+	for (i = 0; i < mNB[p1_blk2]; i++)
+		for (j = 0; j < mNB[p2_blk2]; j++)
+			crossD[mNB[p1_blk1] + i + (mNB[p2_blk1]+j)*N_in_pair1] = sqrt(
+				pow(mS[mWhichB[p1_blk2][i]]-mS[mWhichB[p2_blk2][j]], 2) + pow(mS[mWhichB[p1_blk2][i]+mN]-mS[mWhichB[p2_blk2][j]+mN], 2)
+			);
+
+	mCov->computeCross(crossSigma_12, mTheta, N_in_pair1, N_in_pair2, crossD, false);
+
+	// add to beta
+
+	// beta_add1 = invSigma_1 x Sigma_12
+	dgemm_(&cN, &cN, /*m*/&N_in_pair1, /*n*/&N_in_pair2, /*k*/&N_in_pair1, /*alpha*/&one, /*A*/invSigma_1, /*lda*/&N_in_pair1,
+	      /*B*/crossSigma_12, /*ldb*/&N_in_pair1, /*beta*/&zero, /*C*/beta_add1, /*ldc*/&N_in_pair1);
+	// beta_add2 = beta_add1 x invSigma_2
+	dgemm_(&cN, &cN, /*m*/&N_in_pair1, /*n*/&N_in_pair2, /*k*/&N_in_pair2, /*alpha*/&one, /*A*/beta_add1, /*lda*/&N_in_pair1,
+	      /*B*/invSigma_2, /*ldb*/&N_in_pair2, /*beta*/&zero, /*C*/beta_add2, /*ldc*/&N_in_pair1);
+
+	for (i = 0; i < mNbeta; i++) for (j = 0; j < mNbeta; j++) beta_add1[i + j*mNbeta] = 0;
+
+	// complete t(X1) x beta_add2 x X2
+	for (i = 0; i < mNbeta; i++) {
+		icol = i*mN;
+		for (j = 0; j < mNbeta; j++) {
+			elem = i + j*mNbeta;
+			jcol = j*mN;
+
+			// pair 1/block 1, pair 2/block 1
+			for (k = 0; k < mNB[p1_blk1]; k++) {
+				for (l = 0; l < mNB[p2_blk1]; l++) {
+					beta_add1[elem] += mX[mWhichB[p1_blk1][k] + icol] * beta_add2[k + l*N_in_pair1] * mX[mWhichB[p2_blk1][l] + jcol];
+				}
+			}
+			// pair 1/block 1, pair 2/block 2
+			for (k = 0; k < mNB[p1_blk1]; k++) {
+				for (l = 0; l < mNB[p2_blk2]; l++) {
+					beta_add1[elem] += mX[mWhichB[p1_blk1][k] + icol] * beta_add2[k + (l+mNB[p2_blk1])*N_in_pair1] * mX[mWhichB[p2_blk2][l] + jcol];
+				}
+			}
+
+			// pair 1/block 1, pair 2/block 1
+			for (k = 0; k < mNB[p1_blk2]; k++) {
+				for (l = 0; l < mNB[p2_blk1]; l++) {
+					beta_add1[elem] += mX[mWhichB[p1_blk2][k] + icol] * beta_add2[k+mNB[p1_blk1] + l*N_in_pair1] * mX[mWhichB[p2_blk1][l] + jcol];
+				}
+			}
+			// pair 1/block 1, pair 2/block 2
+			for (k = 0; k < mNB[p1_blk2]; k++) {
+				for (l = 0; l < mNB[p2_blk2]; l++) {
+					beta_add1[elem] += mX[mWhichB[p1_blk2][k] + icol] * beta_add2[k+mNB[p1_blk1] + (l+mNB[p2_blk1])*N_in_pair1] * mX[mWhichB[p2_blk2][l] + jcol];
+				}
+			}
+
+		}
+	}
+
+	// complete beta
+	for (i = 0; i < mNbeta; i++) {
+		for (j = 0; j < mNbeta; j++) {
+			J_beta[i + j*mNbeta] += beta_add1[i + j*mNbeta] + beta_add1[j + i*mNbeta];
+		}
+	}
+
+	// add to theta
+	for (i = 0; i < mNtheta; i++) {
+		if (mFixed[i]) continue;
+
+		// construct B_1 = inv(Sigma_1) x P[i] x inv(Sigma_1)
+		for (k = 0; k < mMaxPair*mMaxPair; k++) B_1[k] = 0;
+		mCov->partials(P, &diag, i, mTheta, mThetaT, mNB[p1_blk1], mWithinD[p1_blk1], mNB[p1_blk2], mWithinD[p1_blk2], mBetweenD[pair1]);
+
+		if (diag) {
+			for (k = 0; k < N_in_pair1; k++) {
+				for (l = 0; l < N_in_pair1; l++) {
+					for (m = 0; m < N_in_pair1; m++) {
+						B_1[k + l*N_in_pair1] += invSigma_1[usymi(k,m,N_in_pair1)] * P[usymi(m,m,N_in_pair1)] * invSigma_1[usymi(m,l,N_in_pair1)];
+					}
+				}
+			}
+		} else {
+			for (l = 0; l < N_in_pair1; l++) { for (m = l+1; m < N_in_pair1; m++) { P[lsymi(l,m,N_in_pair1)] = P[usymi(l,m,N_in_pair1)]; } }
+			dgemm_(&cN, &cN, &N_in_pair1, &N_in_pair1, &N_in_pair1, &one, invSigma_1, &N_in_pair1, P, &N_in_pair1, &zero, B, &N_in_pair1);
+			dgemm_(&cN, &cN, &N_in_pair1, &N_in_pair1, &N_in_pair1, &one, B, &N_in_pair1, invSigma_1, &N_in_pair1, &zero, B_1, &N_in_pair1);
+		}
+
+		c2 = c1;
+		for (j = i; j < mNtheta; j++) {
+			if (mFixed[j]) continue;
+
+			// construct B_2 = inv(Sigma_2) x P[j] x inv(Sigma_2)
+			for (k = 0; k < mMaxPair*mMaxPair; k++) B_2[k] = 0;
+			mCov->partials(P, &diag, j, mTheta, mThetaT, mNB[p2_blk1], mWithinD[p2_blk1], mNB[p2_blk2], mWithinD[p2_blk2], mBetweenD[pair2]);
+
+			if (diag) {
+				for (k = 0; k < N_in_pair2; k++) {
+					for (l = 0; l < N_in_pair2; l++) {
+						for (m = 0; m < N_in_pair2; m++) {
+							B_2[k + l*N_in_pair2] += invSigma_2[usymi(k,m,N_in_pair2)] * P[usymi(m,m,N_in_pair2)] * invSigma_2[usymi(m,l,N_in_pair2)];
+						}
+					}
+				}
+			} else {
+				for (l = 0; l < N_in_pair2; l++) { for (m = l+1; m < N_in_pair2; m++) { P[lsymi(l,m,N_in_pair2)] = P[usymi(l,m,N_in_pair2)]; } }
+				dgemm_(&cN, &cN, &N_in_pair2, &N_in_pair2, &N_in_pair2, &one, invSigma_2, &N_in_pair2, P, &N_in_pair2, &zero, B, &N_in_pair2);
+				dgemm_(&cN, &cN, &N_in_pair2, &N_in_pair2, &N_in_pair2, &one, B, &N_in_pair2, invSigma_2, &N_in_pair2, &zero, B_2, &N_in_pair2);
+			}
+
+			add = 0;
+			for (t = 0; t < N_in_pair1; t++) {
+				for (m = 0; m < N_in_pair2; m++) {
+					a1 = 0;
+					for (k = 0; k < N_in_pair1; k++) {
+						a1 += B_1[t + k*N_in_pair1]*crossSigma_12[k + m*N_in_pair1];
+					}
+
+					a2 = 0;
+					for (l = 0; l < N_in_pair2; l++) {
+						a2 += B_2[m + l*N_in_pair2]*crossSigma_12[t + l*N_in_pair1];
+					}
+
+					add += a1*a2;
+				}
+			}
+
+			J_theta[c1 + c2*(mNtheta-mNfixed)] += add;
+			if (c1 != c2)
+				J_theta[c2 + c1*(mNtheta-mNfixed)] += add;
+
+			c2++;
+		}
+
+		c1++;
+	}
+
+	return(true);
+}
+
+#ifdef PTHREAD
+void *BlockComp::computeVCovThread(void *work) {
+	pair_update_t *w = (pair_update_t *)work;
+	int            id = w->id;
+	BlockComp     *bc = w->bc;
+
+	int i;
+	int pair1,pair2;
+
+	// initialize A and H for this thread
+	for (i = 0; i < bc->mNbeta*bc->mNbeta; i++)   { bc->mBeta_A_t[id][i] = 0; }
+	for (i = 0; i < bc->mNtheta*bc->mNtheta; i++) { bc->mTheta_H_t[id][i] = 0; }
+
+
+	// process blocks
+	while (1) {
+		// get pairs to process
+		pthread_mutex_lock(&(bc->mPairMutex));
+		pair1 = bc->mPair1_t;
+		pair2 = ++bc->mPair2_t;
+
+		if (pair2 >= bc->mNpairs) {
+			pair1 = ++bc->mPair1_t;
+			bc->mPair2_t = pair1+1;
+			pair2 = bc->mPair2_t;
+		}
+		pthread_mutex_unlock(&(bc->mPairMutex));
+
+		if (pair2 >= bc->mNpairs) {
+			// no more to process
+			break;
+		}
+
+		if (!bc->computeVCovPair(bc->mBeta_A_t[id], bc->mTheta_H_t[id], pair1, pair2)) {
+			// error updating this pair
+			bc->mThreadStatus[id] = false;
+			return(NULL);
+		}
+	}
+
+	bc->mThreadStatus[id] = true;
+	return(NULL);
+}
+#endif
 
 // fit model to data
 bool BlockComp::fit(bool verbose) {
@@ -1540,7 +2007,7 @@ void *BlockComp::updateBetaThread(void *work) {
 }
 #endif
 
-bool BlockComp::updateTheta() {
+bool BlockComp::updateTheta(bool fisher) {
 	int i,j,k,l,c;
 	int iH,jH;       // used to fill hessian properly when params fixed
 	int pair;
@@ -1903,31 +2370,34 @@ bool BlockComp::updateTheta() {
 		return(false);
 	}
 
-	// update theta
-	iH = 0;
-	for (i = 0; i < mNtheta; i++) {
-		if (mFixed[i]) { continue; }
+	if (!fisher) {
+		// update theta
+		iH = 0;
+		for (i = 0; i < mNtheta; i++) {
+			if (mFixed[i]) { continue; }
 
-		jH = 0;
-		for (j = 0; j < mNtheta; j++) {
-			if (mFixed[j]) { continue; }
+			jH = 0;
+			for (j = 0; j < mNtheta; j++) {
+				if (mFixed[j]) { continue; }
 
-			mThetaT[i] += mTheta_H[usymi(iH,jH,mNtheta-mNfixed)] * u[j];
+				mThetaT[i] += mTheta_H[usymi(iH,jH,mNtheta-mNfixed)] * u[j];
 
-			jH++;
+				jH++;
+			}
+
+			iH++;
 		}
 
-		iH++;
+		// transform thetaT to original scale
+		for (i = 0; i < mNtheta; i++) { mTheta[i] =  mThetaT[i]; }
+		mCov->transformFromReal(mTheta);
+
+		if (mLikForm == Full) {
+			// invert covariance after update
+			if (!invertFullCov(true, &mLogDet)) return(false);
+		}
 	}
 
-	// transform thetaT to original scale
-	for (i = 0; i < mNtheta; i++) { mTheta[i] =  mThetaT[i]; }
-	mCov->transformFromReal(mTheta);
-
-	if (mLikForm == Full) {
-		// invert covariance after update
-		if (!invertFullCov(true, &mLogDet)) return(false);
-	}
 	return(true);
 }
 
@@ -2757,8 +3227,8 @@ void test_bc(BlockComp::LikForm lf, int nthreads, bool gpu) {
 	//blk.setLikForm(BlockComp::Block);
 	//blk.setLikForm(BlockComp::Full);
 	blk.setLikForm(lf);
-	//blk.setCovType(BlockComp::Exp);
-	blk.setCovType(BlockComp::Matern);
+	blk.setCovType(BlockComp::Exp);
+	//blk.setCovType(BlockComp::Matern);
 
 	if (!blk.setData(test_n, test_y, test_S, test_nblocks, test_B, test_p, test_X, test_npairs, test_neighbors)) {
 		MSG("Error setting data for fit.\n");
@@ -2783,7 +3253,8 @@ void test_bc(BlockComp::LikForm lf, int nthreads, bool gpu) {
 		return;
 	}
 
-	// get beta iterations
+/*
+	// get values at each iteration
 	double iterBeta[(blk.getIters()+1)*blk.getNumBeta()];
 	double iterTheta[(blk.getIters()+1)*blk.getNumTheta()];
 	double iterLogLik[(blk.getIters()+1)];
@@ -2815,6 +3286,16 @@ void test_bc(BlockComp::LikForm lf, int nthreads, bool gpu) {
 	for (int j = 0; j < blk.getIters()+1; j++) {
 		MSG("[%d] %.5f\n", j, iterLogLik[j]);
 	}
+*/
+
+	// get std errors
+	double se_beta[2];
+	double vcov_beta[2*2];
+	double se_theta[3];
+	double vcov_theta[3*3];
+	blk.getStdErrs(se_beta, vcov_beta, se_theta, vcov_theta);
+	MSG("se beta:\n"); for (int i = 0; i < 2; i++) MSG("%.2f ", se_beta[i]); MSG("\n");
+	MSG("se theta:\n"); for (int i = 0; i < 3; i++) MSG("%.2f ", se_theta[i]); MSG("\n");
 
 	//double newS[] = { 0.75, 0.80 };
 /*
@@ -2900,24 +3381,28 @@ int main(void) {
 /*
 	MSG("GPU full\n");
 	t1 = clock();
-	test_bc_pred(BlockComp::Full, 4, true);
+	test_bc(BlockComp::Full, 4, true);
+	//test_bc_pred(BlockComp::Full, 4, true);
 	MSG("--> Done (%.2fsec)\n", (double)(clock() - t1)/CLOCKS_PER_SEC);
-*/
 
 	MSG("CPU full\n");
 	t1 = clock();
-	test_bc_pred(BlockComp::Full, 4, false);
+	test_bc(BlockComp::Full, 4, false);
+	//test_bc_pred(BlockComp::Full, 4, false);
+	MSG("--> Done (%.2fsec)\n", (double)(clock() - t1)/CLOCKS_PER_SEC);
+*/
+
+	MSG("CPU blocks, no threads\n");
+	t1 = clock();
+	test_bc(BlockComp::Block, 1, false);
+	//test_bc_pred(BlockComp::Block, 1, false);
 	MSG("--> Done (%.2fsec)\n", (double)(clock() - t1)/CLOCKS_PER_SEC);
 
 /*
-	MSG("CPU blocks, no threads\n");
-	t1 = clock();
-	test_bc_pred(BlockComp::Block, 1, false);
-	MSG("--> Done (%.2fsec)\n", (double)(clock() - t1)/CLOCKS_PER_SEC);
-
 	MSG("CPU blocks, 4 threads\n");
 	t1 = clock();
-	test_bc_pred(BlockComp::Block, 4, false);
+	test_bc(BlockComp::Block, 4, false);
+	//test_bc_pred(BlockComp::Block, 4, false);
 	MSG("--> Done (%.2fsec)\n", (double)(clock() - t1)/CLOCKS_PER_SEC);
 */
 

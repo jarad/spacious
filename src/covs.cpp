@@ -203,6 +203,12 @@ void CovExp::transformFromReal(double *theta) {
 	theta[2] = exp(-theta[2]);
 }
 
+void CovExp::gradTrans(double *theta) {
+	theta[0] = exp(theta[0]);
+	theta[1] = exp(theta[1]);
+	theta[2] = -exp(-theta[2]);
+}
+
 /*
  * Matern covariance
  * Form: Sigma(i,j) = theta[0] * I(i == j) + theta[1] * rho(d; theta[2], theta[3])
@@ -423,5 +429,12 @@ void CovMatern::transformFromReal(double *theta) {
 	theta[0] = exp(theta[0]);
 	theta[1] = exp(theta[1]);
 	theta[2] = exp(-theta[2]);
+	theta[3] = exp(theta[3]);
+}
+
+void CovMatern::gradTrans(double *theta) {
+	theta[0] = exp(theta[0]);
+	theta[1] = exp(theta[1]);
+	theta[2] = -exp(-theta[2]);
 	theta[3] = exp(theta[3]);
 }

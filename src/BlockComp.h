@@ -67,6 +67,8 @@ public:
 	void getFitted(double *fitted);
 	void getResiduals(double *resids);
 
+	void getStdErrs(double *sd_beta, double *vcov_beta, double *sd_theta, double *vcov_theta);
+
 private:
 	void cleanup();
 
@@ -75,17 +77,18 @@ private:
 	bool computeLogLik(double *log_lik);
 	bool computeLogLikPair(double *log_lik, int pair, double *Sigma, double *resids, double *q);
 
+	bool computeVCov(double *vcov_beta, double *vcov_theta);
+	bool computeVCovPair(double *J_beta, double *J_theta, int pair1, int pair2);
+
 	void computeFitted();
 	void computeFitted(int n, double *fitted, double *X);
 
 	void computeResiduals();
-	void computeStdErrs();
-	void computeCLIC();
 
 	bool invertFullCov(bool do_log_det=false, double *log_det=NULL);
 	bool updateBeta();
 	bool updateBetaPair(int pair, double *Sigma, double *A, double *b);
-	bool updateTheta();
+	bool updateTheta(bool fisher=false);
 	bool updateThetaPair(int pair, double *Sigma, double **W, double *H, double *P, double *resids, double *q, double *u);
 
 	bool blockPredict(int block, int n_0, double *y_0, const double *newS, const double *newX, bool do_sd, double *sd);
@@ -155,6 +158,7 @@ private:
 	static void *updateBetaThread(void *work);
 	static void *updateThetaThread(void *work);
 	static void *computeLogLikThread(void *work);
+	static void *computeVCovThread(void *work);
 
 	// variables for threading
 	pthread_t      *mThreads;
@@ -172,6 +176,8 @@ private:
 
 	pthread_mutex_t mPairMutex;
 	int             mPair_t;
+	int             mPair1_t;
+	int             mPair2_t;
 #endif
 
 #ifdef CUDA

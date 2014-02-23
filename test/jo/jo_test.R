@@ -2,6 +2,7 @@
 if ("package:spacious" %in% search()) {
 	# unload the package
 	detach("package:spacious", unload=TRUE)
+	library.dynam.unload("spacious", libpath="~/Rlib/spacious")
 }
 
 require(spacious)
@@ -10,10 +11,17 @@ S <- cbind(read.table("test/jo/synt_data_pos1.txt")$V1,read.table("test/jo/synt_
 covar <- S[,1]
 y <- read.table("test/jo/synt_data.txt")$V1
 
-fit.FL <- spacious(y~covar, S=S, blocks=list(type="regular", nblocks=1^2), engine="R")
-fit.CL <- spacious(y~covar, S=S, blocks=list(type="regular", nblocks=5^2), engine="R", verbose=TRUE)
-cat("Full:\n"); print(summary(fit.FL))
-cat("Comp:\n"); print(summary(fit.CL))
+#fit.FL_R <- spacious(y~covar, S=S, blocks=list(type="full"), engine="R")
+#fit.FL_C <- spacious(y~covar, S=S, blocks=list(type="full"), engine="C")
+#cat("Full R:\n"); print(summary(fit.FL_R))
+#cat("Full C:\n"); print(summary(fit.FL_C))
+fit.CL_R <- spacious(y~covar, S=S, blocks=list(type="regular", nblocks=5^2), engine="R", verbose=TRUE)
+fit.CL_C1 <- spacious(y~covar, S=S, blocks=list(type="regular", nblocks=5^2), engine="C", verbose=TRUE)
+fit.CL_C4 <- spacious(y~covar, S=S, blocks=list(type="regular", nblocks=5^2), engine="C", nthreads=4, verbose=TRUE)
+cat("Comp R:\n"); print(summary(fit.CL_R))
+cat("Comp C1:\n"); print(summary(fit.CL_C1))
+cat("Comp C4:\n"); print(summary(fit.CL_C4))
+done
 
 # predict at new sites
 newS <- rbind(
