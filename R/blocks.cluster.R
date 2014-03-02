@@ -11,36 +11,30 @@
 	ddd <- rdist(sp, km$centers)
 	ks  <- apply(ddd, 1, which.min)
 
+	# create tessellation from centers
+	tv  <- deldir(km$centers[,1], km$centers[,2], list(ndx=0, ndy=0), c(r.x[1],r.x[2],r.y[1],r.y[2]))
+	tvl <- tile.list(tv)
+
+	B    <- km$cluster
 	grid <- c()
 	for (b in 1:nblocks) {
-		if (length(which(ks==b)) == 0) {
-			# no points in grid for this block; use actual points for polygon
-			bpts <- matrix(S[which(km$cluster==b),], nrow=sum(km$cluster==b), ncol=2)
-			hull <- chull(bpts)
-			poly <- rbind(bpts[hull,], bpts[hull[1],])
+		poly.x <- c(tvl[[b]]$x, tvl[[b]]$x[1])
+		poly.y <- c(tvl[[b]]$y, tvl[[b]]$y[1])
 
-			grid <- c(grid,list(Polygons(list(Polygon(cbind(
-				poly[,1],poly[,2]
-			))),paste(b)) ))
+		grid <- c(grid,list(Polygons(list(Polygon(cbind( poly.x, poly.y ))),paste(b)) ))
 
-			next;
-		} else {
-			# use points from grid for polygon
-			bpts <- sp[which(ks==b),]
-			hull <- chull(bpts)
-			poly <- rbind(bpts[hull,], bpts[hull[1],])
+		in_poly <- point.in.polygon(S[,1], S[,2], poly.x, poly.y) >= 1
 
-			grid <- c(grid,list(Polygons(list(Polygon(cbind(
-				poly[,1],poly[,2]
-			))),paste(b)) ))
-		}
+		if (sum(in_poly) == 0) { next; }
+
+		B[in_poly] <- b
 	}
 	grid <- SpatialPolygons(grid)
 
 	# get neighbors
 	neighbors <- c()
 	sep <- max(c(abs(r.x[2]-r.x[1])/scale,abs(r.y[2]-r.y[1])/scale))
-	neighbor.mat <- nb2mat(poly2nb(grid, snap=sep), style='B', zero.policy=T)
+	neighbor.mat <- nb2mat(poly2nb(grid), style='B', zero.policy=TRUE)
 	for (i in 1:nrow(neighbor.mat)) {
 		for (j in i:ncol(neighbor.mat)) {
 			if (neighbor.mat[i,j] == 1) {
@@ -49,5 +43,5 @@
 		}
 	}
 
-	list(B=km$cluster, neighbors=neighbors, grid=grid)
+	list(B=B, neighbors=neighbors, grid=grid)
 }

@@ -1,5 +1,5 @@
 Package: spacious
-Depends: MASS, fields, geoR, sp, spdep
+Depends: MASS, fields, geoR, sp, spdep, deldir
 Type: Package
 Title: Block composite spatial analysis.
 Version: 1.0

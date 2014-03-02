@@ -8,4 +8,4 @@
 #PKG_CPPFLAGS = $(PTHREAD_CPPFLAGS) #$(CUDA_CPPFLAGS)
 PKG_LIBS = $(LAPACK_LIBS) $(BLAS_LIBS) #$(PTHREAD_LIBS) #$(CUDA_LIBS)
 
-OBJECTS = BlockComp.o covs.o spacious_fit.o utils.o
+OBJECTS = BlockComp.o covs.o spacious.o utils.o
