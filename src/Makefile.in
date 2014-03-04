@@ -24,7 +24,7 @@ NVCC = @CUDA@/bin/nvcc -Xcompiler -fpic -gencode arch=compute_10,code=sm_10 -gen
 all: $(TARGETS)
 
 $(TARGETS): $(OBJS)
-	$(CXX) -shared $(LDFLAGS) $(OBJS) -o $@
+	$(CXX) $(SHLIB_LDFLAGS) $(LDFLAGS) $(OBJS) -o $@
 
 %.o: %.cpp
 	$(CXX) -c $(CXXPICFLAGS) $(CXXFLAGS) $(CPPFLAGS) $(INC) $(FEATURES) $^ -o $@
