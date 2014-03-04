@@ -5,6 +5,8 @@
 #include "covs.h"
 
 #ifdef PTHREAD
+#include <pthread.h>
+
 typedef struct {
 	int              id;
 	double           log_lik;
